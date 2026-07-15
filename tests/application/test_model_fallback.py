@@ -123,6 +123,22 @@ def test_is_free_candidate_requires_free_suffix_only_for_openrouter():
     assert is_free_candidate("nvidia_nim/nvidia/nemotron") is True
 
 
+def test_is_free_candidate_excludes_paid_gemini_pro_models():
+    # Gemini Pro models are paid-only, even with billing enabled.
+    assert is_free_candidate("gemini/models/gemini-2.5-pro") is False
+    assert is_free_candidate("gemini/models/gemini-3.1-pro-preview") is False
+    assert is_free_candidate("gemini/models/gemini-pro-latest") is False
+    # Flash/Flash-Lite/Gemma stay free.
+    assert is_free_candidate("gemini/models/gemini-3.5-flash") is True
+    assert is_free_candidate("gemini/models/gemma-4-31b-it") is True
+
+
+def test_gemma_outranks_flash_so_derivation_prefers_the_high_quota_model():
+    assert rank_potency("gemini/models/gemma-4-31b-it") > rank_potency(
+        "gemini/models/gemini-3.5-flash"
+    )
+
+
 def test_is_chat_model_excludes_non_chat_markers():
     assert is_chat_model("open_router/openai/gpt-oss-20b:free") is True
     assert is_chat_model("open_router/openai/whisper-large-v3") is False
