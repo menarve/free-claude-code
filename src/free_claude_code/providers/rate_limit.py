@@ -55,9 +55,11 @@ class ProviderRateLimiter:
         self._rate_limit = rate_limit
         self._rate_window = float(rate_window)
         self._max_concurrency = max_concurrency
-        self._proactive_limiter = StrictSlidingWindowLimiter(
-            self._rate_limit, self._rate_window
-        )
+        # Proactive send throttle is keyed per model id, like the reactive block:
+        # each model has its own upstream quota, so one model's pacing must not
+        # slow requests to the provider's other models (critical for derivation,
+        # which sweeps many models of the same provider). "" is the shared key.
+        self._proactive_limiters: dict[str, StrictSlidingWindowLimiter] = {}
         # Reactive 429/5xx blocks are keyed per model id: a rate limit hit on one
         # model must not block the provider's other models, which have their own
         # upstream quotas. "" is the shared key for callers without a model.
@@ -79,14 +81,21 @@ class ProviderRateLimiter:
         # for proactive capacity. Commit the proactive timestamp only if that
         # deadline is still clear, so retries neither burst nor consume unused quota.
         waited_reactively = False
+        proactive = self._proactive_for(model)
         while True:
             waited_reactively = (
                 await self._wait_for_reactive_block(model) or waited_reactively
             )
-            if await self._proactive_limiter.acquire_if(
-                lambda: not self.is_blocked(model)
-            ):
+            if await proactive.acquire_if(lambda: not self.is_blocked(model)):
                 return waited_reactively
+
+    def _proactive_for(self, model: str | None) -> StrictSlidingWindowLimiter:
+        key = model or ""
+        limiter = self._proactive_limiters.get(key)
+        if limiter is None:
+            limiter = StrictSlidingWindowLimiter(self._rate_limit, self._rate_window)
+            self._proactive_limiters[key] = limiter
+        return limiter
 
     async def _wait_for_reactive_block(self, model: str | None = None) -> bool:
         waited = False

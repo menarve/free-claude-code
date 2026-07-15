@@ -167,7 +167,7 @@ class TestProviderRateLimiter:
             return reactive_checks == 2
 
         monkeypatch.setattr(
-            limiter._proactive_limiter,
+            limiter._proactive_for(None),
             "acquire_if",
             acquire_if_allowed,
         )
@@ -204,7 +204,7 @@ class TestProviderRateLimiter:
         monkeypatch.setattr(rate_limit_module.time, "monotonic", lambda: now)
         monkeypatch.setattr(rate_limit_module.asyncio, "sleep", advance_time)
         monkeypatch.setattr(
-            limiter._proactive_limiter,
+            limiter._proactive_for(None),
             "acquire_if",
             AsyncMock(return_value=True),
         )
@@ -250,7 +250,7 @@ class TestProviderRateLimiter:
             await asyncio.Event().wait()
             return True
 
-        monkeypatch.setattr(limiter._proactive_limiter, "acquire_if", wait_forever)
+        monkeypatch.setattr(limiter._proactive_for(None), "acquire_if", wait_forever)
         waiter = asyncio.create_task(limiter.wait_if_blocked())
         await acquire_started.wait()
 
@@ -301,6 +301,21 @@ class TestProviderRateLimiter:
             await limiter.execute_with_retry(rate_limited, model="m")
 
         assert calls == 1  # one attempt only, no inline retries
+
+    @pytest.mark.asyncio
+    async def test_proactive_throttle_is_per_model_not_provider_wide(self) -> None:
+        """One model's send-pacing must not delay another model of the provider."""
+        # 1 request per 0.5s per model.
+        limiter = ProviderRateLimiter(rate_limit=1, rate_window=0.5)
+
+        start = time.monotonic()
+        # Two different models, each first request -> both should pass immediately
+        # because each has its own window (provider-wide would serialize them).
+        await limiter.wait_if_blocked("model-a")
+        await limiter.wait_if_blocked("model-b")
+        elapsed = time.monotonic() - start
+
+        assert elapsed < 0.4  # not throttled against each other
 
     def test_reactive_block_is_per_model_not_provider_wide(self) -> None:
         """A 429 on one model must not block the provider's other models."""
