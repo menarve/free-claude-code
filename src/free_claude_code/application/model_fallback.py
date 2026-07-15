@@ -154,6 +154,33 @@ def rank_potency(model_ref: str) -> int:
     return 50
 
 
+def eligible_candidate_refs(
+    model_infos: Iterable[ProviderModelInfo],
+) -> list[str]:
+    """Discovered chat models the fallback may auto-substitute, most potent first.
+
+    Excludes non-chat models (embeddings, image, TTS, ...) and paid OpenRouter
+    models - an automatic substitution the user never requested must never
+    reach a model that could cost money. This is the single source of truth
+    for "models the derivation system can use", shared by the fallback chain
+    and the admin Usage tab so they never drift apart.
+    """
+
+    seen: set[str] = set()
+    refs: list[str] = []
+    for info in model_infos:
+        ref = info.model_id
+        if ref in seen:
+            continue
+        if not is_chat_model(ref) or not is_free_candidate(ref):
+            continue
+        seen.add(ref)
+        refs.append(ref)
+
+    refs.sort(key=lambda ref: (-rank_potency(ref), ref))
+    return refs
+
+
 def build_fallback_chain(
     primary_ref: str,
     model_infos: Iterable[ProviderModelInfo],
@@ -162,27 +189,11 @@ def build_fallback_chain(
 
     ``primary_ref`` (whatever model the request originally resolved to - the
     default, opus/sonnet/haiku role, or a direct ``provider/model`` request) is
-    always first; remaining discovered chat models (those reachable with
-    configured API keys) follow in descending heuristic potency. Non-chat
-    models and paid OpenRouter models are excluded - this is an automatic
-    substitution the user never explicitly requested, so it must never reach
-    a model that could cost money.
+    always first; the eligible discovered candidates follow in descending
+    heuristic potency.
     """
 
-    seen: set[str] = {primary_ref}
-    rest: list[str] = []
-    for info in model_infos:
-        ref = info.model_id
-        if ref in seen:
-            continue
-        if not is_chat_model(ref):
-            continue
-        if not is_free_candidate(ref):
-            continue
-        seen.add(ref)
-        rest.append(ref)
-
-    rest.sort(key=lambda ref: (-rank_potency(ref), ref))
+    rest = [ref for ref in eligible_candidate_refs(model_infos) if ref != primary_ref]
     chain = [primary_ref, *rest]
     logger.debug("MODEL FALLBACK CHAIN ({} candidates): {}", len(chain), chain)
     return chain

@@ -8,13 +8,6 @@ const state = {
 };
 
 const MASKED_SECRET = "********";
-const MODEL_ROLE_FIELDS = [
-  ["MODEL", "Default"],
-  ["MODEL_FABLE", "Fable"],
-  ["MODEL_OPUS", "Opus"],
-  ["MODEL_SONNET", "Sonnet"],
-  ["MODEL_HAIKU", "Haiku"],
-];
 const VIEW_GROUPS = [
   {
     id: "providers",
@@ -252,20 +245,6 @@ function renderSections(sections, fields) {
   });
 }
 
-function configuredModelListOrder() {
-  // Distinct configured model refs, keyed to their first appearance in the
-  // Default/Fable/Opus/Sonnet/Haiku list (several roles may share a ref).
-  const listOrderByRef = new Map();
-  MODEL_ROLE_FIELDS.forEach(([key], index) => {
-    const field = state.fields.get(key);
-    const ref = field && field.value ? field.value.trim() : "";
-    if (ref && !listOrderByRef.has(ref)) {
-      listOrderByRef.set(ref, index);
-    }
-  });
-  return listOrderByRef;
-}
-
 function renderUsage(usage) {
   const container = byId("usageSections");
   container.innerHTML = "";
@@ -276,7 +255,7 @@ function renderUsage(usage) {
   const heading = document.createElement("div");
   heading.className = "section-heading";
   heading.innerHTML =
-    "<div><h3>Model usage</h3><p>Requests, input tokens, and errors for the models currently configured (Default/Fable/Opus/Sonnet/Haiku).</p></div>";
+    "<div><h3>Model usage</h3><p>Requests, input tokens, and errors for every model the derivation system can use with your configured API keys (paid OpenRouter models excluded).</p></div>";
   section.appendChild(heading);
 
   const controls = document.createElement("div");
@@ -297,7 +276,7 @@ function renderUsage(usage) {
   controls.appendChild(sortLabel);
 
   [
-    ["list", "Model list order"],
+    ["list", "Derivation order"],
     ["usage", "Most used"],
   ].forEach(([value, label]) => {
     const button = document.createElement("button");
@@ -315,9 +294,10 @@ function renderUsage(usage) {
 
   section.appendChild(controls);
 
-  const listOrderByRef = configuredModelListOrder();
+  const eligible = usage.eligible || [];
+  const derivationOrder = new Map(eligible.map((ref, index) => [ref, index]));
   const emptyStats = { requests: 0, errors: 0, input_tokens: 0, last_used_at: null };
-  const rows = Array.from(listOrderByRef.keys()).map((modelRef) => ({
+  const rows = eligible.map((modelRef) => ({
     modelRef,
     stats: (usage.models && usage.models[modelRef]) || emptyStats,
   }));
@@ -326,14 +306,19 @@ function renderUsage(usage) {
     rows.sort((a, b) => b.stats.requests - a.stats.requests);
   } else {
     rows.sort(
-      (a, b) => listOrderByRef.get(a.modelRef) - listOrderByRef.get(b.modelRef),
+      (a, b) => derivationOrder.get(a.modelRef) - derivationOrder.get(b.modelRef),
     );
   }
+
+  const countLabel = document.createElement("p");
+  countLabel.className = "field-description";
+  countLabel.textContent = `${rows.length} models available for derivation.`;
+  section.appendChild(countLabel);
 
   if (rows.length === 0) {
     const empty = document.createElement("p");
     empty.className = "field-description";
-    empty.textContent = "No models configured yet.";
+    empty.textContent = "No models available yet.";
     section.appendChild(empty);
   } else {
     const table = document.createElement("table");

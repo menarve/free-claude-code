@@ -10,9 +10,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from free_claude_code.application.model_fallback import eligible_candidate_refs
 from free_claude_code.config.admin.manifest import FIELD_BY_KEY
 from free_claude_code.config.admin.persistence import validate_updates
 from free_claude_code.config.admin.values import load_config_response
+from free_claude_code.config.model_refs import configured_chat_model_refs
 
 from .dependencies import get_services
 from .ports import ApiServices
@@ -158,7 +160,30 @@ async def usage_stats(
     services: ApiServices = Depends(get_services),
 ):
     require_loopback_admin(request)
-    return services.usage_stats.snapshot()
+    snapshot = services.usage_stats.snapshot()
+    snapshot["eligible"] = _eligible_derivation_refs(services)
+    return snapshot
+
+
+def _eligible_derivation_refs(services: ApiServices) -> list[str]:
+    """Ordered refs the derivation system can use: role models, then candidates.
+
+    Configured role models come first (in Default/Fable/Opus/Sonnet/Haiku
+    order) so the user's own choices always lead, even a paid one they set
+    explicitly; the remaining auto-substitutable candidates follow by potency.
+    """
+    settings = services.requests.current_settings()
+    role_refs = [ref.model_ref for ref in configured_chat_model_refs(settings)]
+    candidate_refs = eligible_candidate_refs(
+        services.requests.cached_prefixed_model_infos()
+    )
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for ref in (*role_refs, *candidate_refs):
+        if ref not in seen:
+            seen.add(ref)
+            ordered.append(ref)
+    return ordered
 
 
 def _filtered_values(values: dict[str, Any]) -> dict[str, Any]:

@@ -1,5 +1,6 @@
 from free_claude_code.application.model_fallback import (
     build_fallback_chain,
+    eligible_candidate_refs,
     is_chat_model,
     is_free_candidate,
     rank_potency,
@@ -9,6 +10,25 @@ from free_claude_code.application.model_metadata import ProviderModelInfo
 
 def _info(model_id: str) -> ProviderModelInfo:
     return ProviderModelInfo(model_id)
+
+
+def test_eligible_candidate_refs_excludes_paid_and_non_chat_ordered_by_potency():
+    refs = eligible_candidate_refs(
+        [
+            _info("open_router/small-model:free"),
+            _info("open_router/opus-tier-model:free"),
+            _info("open_router/anthropic/claude-opus-4.8"),
+            _info("open_router/whisper-large:free"),
+            _info("gemini/gemini-3.1-flash-lite"),
+        ]
+    )
+
+    assert "open_router/anthropic/claude-opus-4.8" not in refs
+    assert "open_router/whisper-large:free" not in refs
+    assert refs.index("open_router/opus-tier-model:free") < refs.index(
+        "open_router/small-model:free"
+    )
+    assert "gemini/gemini-3.1-flash-lite" in refs
 
 
 def test_build_fallback_chain_always_keeps_primary_first():

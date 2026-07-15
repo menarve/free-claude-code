@@ -5,10 +5,11 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from free_claude_code.application.model_metadata import ProviderModelInfo
 from free_claude_code.config.admin.values import MASKED_SECRET
 from free_claude_code.config.server_urls import local_admin_url
 from free_claude_code.config.settings import Settings
-from tests.api.support import create_test_app
+from tests.api.support import create_test_app, provider_manager_for_app
 
 
 def _local_client(app):
@@ -103,19 +104,15 @@ def test_admin_static_hides_managed_source_label():
     assert "sourceEl.textContent = source" in script
 
 
-def test_admin_static_usage_tab_only_lists_configured_model_roles():
+def test_admin_static_usage_tab_lists_derivation_eligible_models():
     script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
         encoding="utf-8"
     )
 
-    assert '["MODEL", "Default"]' in script
-    assert '["MODEL_FABLE", "Fable"]' in script
-    assert '["MODEL_OPUS", "Opus"]' in script
-    assert '["MODEL_SONNET", "Sonnet"]' in script
-    assert '["MODEL_HAIKU", "Haiku"]' in script
-    assert "function configuredModelListOrder()" in script
-    assert '["list", "Model list order"]' in script
+    assert "const eligible = usage.eligible || [];" in script
+    assert '["list", "Derivation order"]' in script
     assert '["usage", "Most used"]' in script
+    assert "models available for derivation" in script
 
 
 def test_admin_config_masks_secrets_and_exposes_manifest(monkeypatch, tmp_path):
@@ -868,3 +865,40 @@ def test_admin_usage_reports_recorded_model_counters(monkeypatch, tmp_path):
     assert model_stats["input_tokens"] == 150
     assert model_stats["errors"] == 1
     assert model_stats["last_used_at"]
+
+
+def test_admin_usage_eligible_lists_derivation_models_and_excludes_paid(
+    monkeypatch, tmp_path
+):
+    _set_home(monkeypatch, tmp_path)
+    _clear_process_config(monkeypatch)
+    settings = Settings.model_construct(
+        model="gemini/gemini-3.1-flash-lite",
+        model_fable=None,
+        model_opus="gemini/gemini-3.1-flash-lite",
+        model_sonnet=None,
+        model_haiku="gemini/gemini-3.1-flash-lite-preview",
+        anthropic_auth_token="",
+    )
+    app = create_test_app(settings)
+    provider_manager_for_app(app).cache_model_infos(
+        "open_router",
+        {
+            ProviderModelInfo("openai/gpt-oss-20b:free"),
+            ProviderModelInfo("anthropic/claude-opus-4.8"),
+        },
+    )
+    provider_manager_for_app(app).cache_model_infos(
+        "gemini",
+        {ProviderModelInfo("gemini-3.1-flash-lite")},
+    )
+
+    eligible = _local_client(app).get("/admin/api/usage").json()["eligible"]
+
+    # Configured role models lead the list.
+    assert eligible[0] == "gemini/gemini-3.1-flash-lite"
+    assert "gemini/gemini-3.1-flash-lite-preview" in eligible
+    # Free discovered candidate is included.
+    assert "open_router/openai/gpt-oss-20b:free" in eligible
+    # Paid OpenRouter model is never offered for automatic derivation.
+    assert "open_router/anthropic/claude-opus-4.8" not in eligible
