@@ -76,10 +76,12 @@ class MessagesHandler:
         token_counter: TokenCounter = get_token_count,
         provider_executor: ProviderExecutor | None = None,
         generation_id: int | None = None,
+        model_cache: object | None = None,
     ) -> None:
         self._settings = settings
         self._model_router = model_router or ModelRouter(settings)
         self._token_counter = token_counter
+        self._model_cache = model_cache
         self._provider_executor = provider_executor or ProviderExecutor(
             provider_resolver,
             token_counter=token_counter,
@@ -112,6 +114,8 @@ class MessagesHandler:
                         raw_log_label="FULL_PAYLOAD",
                         raw_log_payload=routed.request.model_dump(),
                         request_id=request_id,
+                        model_router=self._model_router,
+                        model_cache=self._model_cache,
                     )
                 )
             return await self._to_public_response(

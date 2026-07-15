@@ -13,14 +13,16 @@ from free_claude_code.core.anthropic import (
     anthropic_request_snapshot,
     get_token_count,
 )
+from free_claude_code.core.failures import find_execution_failure
 from free_claude_code.core.trace import (
     close_stream_input,
     trace_event,
     traced_async_stream,
 )
 
+from .model_fallback import build_fallback_chain
 from .ports import ProviderResolver
-from .routing import RoutedMessagesRequest
+from .routing import ModelRouter, RoutedMessagesRequest
 
 TokenCounter = Callable[
     [list[Message], str | list[SystemContent] | None, list[Tool] | None],
@@ -44,6 +46,8 @@ class ProviderExecutor:
         self._token_counter = token_counter
         self._generation_id = generation_id
         self._log_raw_payloads = log_raw_payloads
+        self._model_router: ModelRouter | None = None
+        self._model_cache: object | None = None
 
     def stream(
         self,
@@ -53,8 +57,16 @@ class ProviderExecutor:
         raw_log_label: str,
         raw_log_payload: object,
         request_id: str,
+        model_router: ModelRouter | None = None,
+        model_cache: object | None = None,
     ) -> AsyncIterator[str]:
         """Preflight synchronously, then return the traced provider stream."""
+        # Per-request fallback wiring (the executor is reused across requests).
+        if model_router is not None:
+            self._model_router = model_router
+        if model_cache is not None:
+            self._model_cache = model_cache
+
         provider = self._provider_resolver(routed.resolved.provider_id)
         provider.preflight_stream(
             routed.request,
@@ -101,24 +113,87 @@ class ProviderExecutor:
         )
 
         async def provider_body() -> AsyncIterator[str]:
-            provider_stream: AsyncIterator[str] | None = None
-            try:
-                provider_stream = provider.stream_response(
-                    routed.request,
-                    input_tokens=input_tokens,
-                    request_id=request_id,
-                    thinking_enabled=routed.resolved.thinking_enabled,
-                )
-                async for chunk in provider_stream:
-                    yield chunk
-            finally:
-                if provider_stream is not None:
-                    await close_stream_input(
-                        provider_stream,
-                        owner="provider_executor",
-                        source="api",
-                        preserved_error=sys.exception(),
+            chain = self._fallback_chain(routed)
+            last_error: BaseException | None = None
+            for index, candidate_ref in enumerate(chain):
+                # index 0 keeps the already-resolved default model exactly;
+                # later candidates are re-resolved from their provider/model ref.
+                if index == 0:
+                    candidate_request = routed.request
+                    candidate_provider_id = routed.resolved.provider_id
+                    candidate_provider_model = routed.resolved.provider_model
+                    candidate_thinking = routed.resolved.thinking_enabled
+                    candidate_provider = provider
+                else:
+                    resolved = self._model_router.resolve(candidate_ref)
+                    candidate_provider_id = resolved.provider_id
+                    candidate_provider_model = resolved.provider_model
+                    candidate_thinking = resolved.thinking_enabled
+                    candidate_request = routed.request.model_copy(deep=True)
+                    candidate_request.model = candidate_provider_model
+                    candidate_provider = self._provider_resolver(candidate_provider_id)
+                    candidate_provider.preflight_stream(
+                        candidate_request, thinking_enabled=candidate_thinking
                     )
+                    trace_event(
+                        stage="routing",
+                        event="free_claude_code.api.route.fallback",
+                        source="api",
+                        request_id=request_id,
+                        provider_id=candidate_provider_id,
+                        provider_model=candidate_provider_model,
+                        provider_model_ref=candidate_ref,
+                        gateway_model=candidate_request.model,
+                        thinking_enabled=candidate_thinking,
+                        fallback_index=index,
+                    )
+
+                committed = False
+                provider_stream: AsyncIterator[str] | None = None
+                try:
+                    provider_stream = candidate_provider.stream_response(
+                        candidate_request,
+                        input_tokens=input_tokens,
+                        request_id=request_id,
+                        thinking_enabled=candidate_thinking,
+                    )
+                    async for chunk in provider_stream:
+                        committed = True
+                        yield chunk
+                    return
+                except BaseException as exc:
+                    last_error = exc
+                    failure = find_execution_failure(exc)
+                    if committed or (failure is not None and not failure.retryable):
+                        # Already delivered output, or a non-capacity error for
+                        # this candidate (auth/bad-request) -> do not switch models.
+                        raise
+                    logger.warning(
+                        "MODEL FALLBACK: '{}' failed ({}), trying next candidate",
+                        candidate_provider_model,
+                        type(exc).__name__,
+                    )
+                    trace_event(
+                        stage="provider",
+                        event="provider.fallback.skip",
+                        source="provider",
+                        request_id=request_id,
+                        provider_id=candidate_provider_id,
+                        provider_model=candidate_provider_model,
+                        fallback_index=index,
+                        exc_type=type(exc).__name__,
+                    )
+                    continue
+                finally:
+                    if provider_stream is not None:
+                        await close_stream_input(
+                            provider_stream,
+                            owner="provider_executor",
+                            source="api",
+                            preserved_error=sys.exception(),
+                        )
+            if last_error is not None:
+                raise last_error
 
         stream_trace: dict[str, object] = {
             "request_id": request_id,
@@ -145,3 +220,23 @@ class ProviderExecutor:
             chunk_event=None,
             extra=stream_trace,
         )
+
+    def _fallback_chain(self, routed: RoutedMessagesRequest) -> list[str]:
+        """Ordered ``provider/model`` refs to try for this request's model.
+
+        Applies to any resolved model (default, opus/sonnet/haiku role, or a
+        direct ``provider/model`` request) whenever the model cache is
+        available; otherwise the single already-resolved model.
+        """
+
+        if self._model_router is None or self._model_cache is None:
+            return [routed.resolved.provider_model_ref]
+        try:
+            model_infos = self._model_cache.cached_prefixed_model_infos()
+        except Exception as exc:
+            logger.warning("MODEL FALLBACK: model cache unavailable: {}", exc)
+            return [routed.resolved.provider_model_ref]
+        chain = build_fallback_chain(routed.resolved.provider_model_ref, model_infos)
+        if not chain:
+            return [routed.resolved.provider_model_ref]
+        return chain

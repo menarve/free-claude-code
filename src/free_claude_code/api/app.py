@@ -88,6 +88,8 @@ def create_app(services: ApiServices) -> FastAPI:
             claude_session_id=claude_sid,
             request_id=request_id,
         ):
+            import traceback
+            traceback.print_exc()
             if settings.log_api_error_tracebacks:
                 logger.error("General Error: {}", safe_exception_message(exc))
                 logger.error(redacted_exception_traceback(exc))

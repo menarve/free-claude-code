@@ -46,6 +46,9 @@ class RequestRuntimeLease(Protocol):
 
     def resolve_provider(self, provider_id: str) -> ProviderPort: ...
 
+    def cached_prefixed_model_infos(self) -> tuple[ProviderModelInfo, ...]:
+        """Return cached ``provider/model`` refs discovered for configured keys."""
+
     async def release(self) -> None: ...
 
 

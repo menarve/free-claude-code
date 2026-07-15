@@ -17,7 +17,7 @@ class FailureKind(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
-@dataclass(slots=True, eq=False)
+@dataclass(eq=False)
 class ExecutionFailure(Exception):
     """A finalized provider-execution failure independent of any wire protocol."""
 
@@ -29,12 +29,14 @@ class ExecutionFailure(Exception):
     def __post_init__(self) -> None:
         Exception.__init__(self, self.message)
 
+    _FIELD_NAMES = ("kind", "status_code", "message", "retryable")
+
     def __setattr__(self, name: str, value: object) -> None:
         # Exception machinery must be able to update __traceback__, __cause__,
         # and __context__ while semantic failure fields remain immutable.
-        if name in self.__slots__ and hasattr(self, name):
+        if name in self._FIELD_NAMES and hasattr(self, name):
             raise FrozenInstanceError(f"cannot assign to field {name!r}")
-        super().__setattr__(name, value)
+        Exception.__setattr__(self, name, value)
 
 
 def find_execution_failure(exc: BaseException) -> ExecutionFailure | None:

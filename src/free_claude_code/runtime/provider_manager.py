@@ -1,5 +1,7 @@
 """Single-owner provider generations and application model catalog."""
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field

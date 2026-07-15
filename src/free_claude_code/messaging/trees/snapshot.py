@@ -1,5 +1,7 @@
 """Serializable messaging conversation snapshots."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,7 +35,7 @@ class TreeSnapshot:
         }
 
     @classmethod
-    def from_json(cls, data: Any) -> TreeSnapshot | None:
+    def from_json(cls, data: Any) -> "TreeSnapshot" | None:
         if not isinstance(data, dict):
             return None
         root_id = data.get("root_id")

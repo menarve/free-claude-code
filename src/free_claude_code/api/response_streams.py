@@ -286,7 +286,7 @@ class _PrefetchedStream(AsyncIterator[str]):
         self._done = False
         self._closed = False
 
-    def __aiter__(self) -> _PrefetchedStream:
+    def __aiter__(self) -> "_PrefetchedStream":
         return self
 
     async def __anext__(self) -> str:
