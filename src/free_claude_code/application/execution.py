@@ -209,12 +209,16 @@ class ProviderExecutor:
                             candidate_provider_id, candidate_provider_model
                         )
                     failure = find_execution_failure(exc)
+                    # In derivation there is no user-chosen model to honor, so any
+                    # pre-commit failure just means "this model can't serve it" -
+                    # try the next candidate (auth, 404, odd 400s, capacity...).
+                    # Fixed-model routing only switches on capacity/context errors.
                     non_switchable_failure = failure is not None and not (
                         failure.retryable or failure.model_fallback_eligible
                     )
-                    if committed or non_switchable_failure:
-                        # Already delivered output, or a non-capacity error for
-                        # this candidate (auth/bad-request) -> do not switch models.
+                    if committed or (non_switchable_failure and not derivation):
+                        # Already delivered output, or a non-switchable error on a
+                        # user-pinned model -> do not switch models.
                         raise
                     logger.warning(
                         "MODEL FALLBACK: '{}' failed ({}), trying next candidate",

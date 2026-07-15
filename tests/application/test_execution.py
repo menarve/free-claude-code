@@ -435,6 +435,59 @@ async def test_derivation_all_in_cooldown_raises_overloaded() -> None:
     assert exc_info.value.status_code == 429
 
 
+class NotFoundProvider(FakeProvider):
+    async def stream_response(
+        self,
+        request: MessagesRequest,
+        input_tokens: int = 0,
+        *,
+        request_id: str | None = None,
+        thinking_enabled: bool | None = None,
+    ) -> AsyncIterator[str]:
+        self.stream_calls.append({"request": request})
+        raise ExecutionFailure(
+            kind=FailureKind.UPSTREAM,
+            status_code=404,
+            message="model is not supported for generateContent",
+            retryable=False,
+        )
+        yield ""  # pragma: no cover - keeps this an async generator
+
+
+@pytest.mark.asyncio
+async def test_derivation_switches_past_any_precommit_failure() -> None:
+    # A non-switchable 404 on one model must not abort derivation: the next
+    # candidate is tried. (Fixed-model routing would raise instead.)
+    broken = NotFoundProvider()
+    working = FakeProvider()
+    providers = {"open_router": broken, "gemini": working}
+    executor = ProviderExecutor(
+        lambda provider_id: providers[provider_id],
+        token_counter=lambda _messages, _system, _tools: 5,
+    )
+    model_cache = MagicMock()
+    model_cache.cached_prefixed_model_infos.return_value = (
+        ProviderModelInfo("open_router/broken-model:free"),
+        ProviderModelInfo("gemini/gemini-3.1-flash-lite"),
+    )
+    model_router = MagicMock()
+    model_router.resolve.side_effect = _resolve_ref
+
+    stream = executor.stream(
+        _derivation_routed_request(),
+        wire_api="messages",
+        raw_log_label="FULL_PAYLOAD",
+        raw_log_payload={},
+        request_id="req_precommit_switch",
+        model_router=model_router,
+        model_cache=model_cache,
+    )
+
+    assert [chunk async for chunk in stream] == ["event: message_stop\ndata: {}\n\n"]
+    assert len(broken.stream_calls) == 1
+    assert len(working.stream_calls) == 1
+
+
 @pytest.mark.asyncio
 async def test_derivation_mode_without_candidates_raises_unavailable() -> None:
     executor = ProviderExecutor(
