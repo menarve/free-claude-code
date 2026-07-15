@@ -1,6 +1,8 @@
 """Provider-owned SDK classification and retry qualification."""
 
 import json
+import re
+import time
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import replace
@@ -237,13 +239,13 @@ def _classify_provider_failure(
 ) -> ExecutionFailure:
     if isinstance(exc, ExecutionFailure):
         if exc.kind == FailureKind.RATE_LIMIT:
-            mark_rate_limited(60)
+            mark_rate_limited(rate_limit_cooldown_seconds(exc))
         return exc
 
     if isinstance(exc, openai.AuthenticationError):
         return _failure(FailureKind.AUTHENTICATION, 401, _AUTHENTICATION_MESSAGE, False)
     if isinstance(exc, openai.RateLimitError):
-        mark_rate_limited(60)
+        mark_rate_limited(rate_limit_cooldown_seconds(exc))
         return _failure(FailureKind.RATE_LIMIT, 429, _RATE_LIMIT_MESSAGE, True)
     if isinstance(exc, openai.BadRequestError):
         return _failure(
@@ -272,7 +274,7 @@ def _classify_provider_failure(
     if isinstance(exc, openai.APIError):
         status = retryable_transient_status(exc)
         if status == 429:
-            mark_rate_limited(60)
+            mark_rate_limited(rate_limit_cooldown_seconds(exc))
             return _failure(FailureKind.RATE_LIMIT, 429, _RATE_LIMIT_MESSAGE, True)
         if is_transient_overload_error(exc):
             return overloaded_provider_failure()
@@ -293,7 +295,7 @@ def _classify_provider_failure(
                 FailureKind.AUTHENTICATION, 401, _AUTHENTICATION_MESSAGE, False
             )
         if status == 429:
-            mark_rate_limited(60)
+            mark_rate_limited(rate_limit_cooldown_seconds(exc))
             return _failure(FailureKind.RATE_LIMIT, 429, _RATE_LIMIT_MESSAGE, True)
         if status == 400:
             return _failure(
@@ -340,6 +342,51 @@ def _failure(
         retryable=retryable,
         model_fallback_eligible=model_fallback_eligible,
     )
+
+
+# Default cooldown when the provider gives no retry hint. Long enough that a
+# model whose daily quota is exhausted isn't retried every minute, short enough
+# to re-check within the hour. Capped so a huge reset window doesn't sideline a
+# model indefinitely.
+_DEFAULT_RATE_LIMIT_COOLDOWN_S = 300.0
+_MAX_RATE_LIMIT_COOLDOWN_S = 3600.0
+# Gemini reports "retryDelay": "34s"; a generic Retry-After is seconds.
+_RETRY_DELAY_RE = re.compile(r'retrydelay["\s:=]+(\d+(?:\.\d+)?)s')
+
+
+def rate_limit_cooldown_seconds(exc: BaseException) -> float:
+    """Cooldown for a rate-limited model, honoring the provider's retry hint.
+
+    Prefers an explicit delay from the provider (Gemini ``retryDelay``,
+    ``Retry-After`` header, OpenRouter ``X-RateLimit-Reset`` timestamp) so a
+    per-minute limit clears fast while a daily-quota exhaustion stays parked;
+    otherwise a sane default. Clamped to ``[1s, 1h]``.
+    """
+    delay = _provider_retry_delay(exc)
+    if delay is None:
+        return _DEFAULT_RATE_LIMIT_COOLDOWN_S
+    return min(max(delay, 1.0), _MAX_RATE_LIMIT_COOLDOWN_S)
+
+
+def _provider_retry_delay(exc: BaseException) -> float | None:
+    match = _RETRY_DELAY_RE.search(transient_error_text(exc))
+    if match:
+        return float(match.group(1))
+
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if not isinstance(headers, Mapping):
+        return None
+    retry_after = headers.get("retry-after")
+    if isinstance(retry_after, str) and retry_after.strip().isdigit():
+        return float(retry_after)
+    reset = headers.get("x-ratelimit-reset")
+    if isinstance(reset, str) and reset.strip().isdigit():
+        # OpenRouter sends a millisecond epoch timestamp.
+        remaining = float(reset) / 1000.0 - time.time()
+        if remaining > 0:
+            return remaining
+    return None
 
 
 def _is_model_switchable_bad_request(exc: BaseException) -> bool:

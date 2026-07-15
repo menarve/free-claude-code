@@ -57,7 +57,7 @@ class _ClassificationCase:
     kind: FailureKind
     status_code: int
     retryable: bool
-    rate_limit_block_seconds: int | None = None
+    rate_limit_block_seconds: float | None = None
     model_fallback_eligible: bool = False
 
 
@@ -83,7 +83,7 @@ _CASES = (
         FailureKind.RATE_LIMIT,
         429,
         True,
-        60,
+        300.0,
     ),
     _ClassificationCase(
         "openai_bad_request",
@@ -166,7 +166,7 @@ _CASES = (
         FailureKind.RATE_LIMIT,
         429,
         True,
-        60,
+        300.0,
     ),
     _ClassificationCase(
         "statusless_openai_overload_body",
@@ -414,3 +414,56 @@ def test_attached_streamed_error_body_remains_bounded() -> None:
 
     assert f"truncated after {ERROR_DETAIL_DISPLAY_CAP_BYTES} bytes" in failure.message
     assert "x" * 100 in failure.message
+
+
+def test_rate_limit_cooldown_honors_gemini_retry_delay() -> None:
+    from free_claude_code.providers.failure_policy import rate_limit_cooldown_seconds
+
+    exc = _openai_status_error(
+        openai.RateLimitError,
+        status_code=429,
+        message="quota exceeded",
+        body={
+            "error": {
+                "message": "quota exceeded",
+                "details": [{"@type": "RetryInfo", "retryDelay": "34s"}],
+            }
+        },
+    )
+    assert rate_limit_cooldown_seconds(exc) == 34.0
+
+
+def test_rate_limit_cooldown_defaults_without_a_retry_hint() -> None:
+    from free_claude_code.providers.failure_policy import rate_limit_cooldown_seconds
+
+    exc = _openai_status_error(
+        openai.RateLimitError, status_code=429, message="Too many requests"
+    )
+    assert rate_limit_cooldown_seconds(exc) == 300.0
+
+
+def test_rate_limit_cooldown_reads_openrouter_reset_header() -> None:
+    import time as _time
+
+    from free_claude_code.providers.failure_policy import rate_limit_cooldown_seconds
+
+    reset_ms = int((_time.time() + 120) * 1000)
+    request = httpx.Request("POST", "https://openrouter.test/v1")
+    response = httpx.Response(
+        429, request=request, headers={"x-ratelimit-reset": str(reset_ms)}
+    )
+    exc = httpx.HTTPStatusError("rate limited", request=request, response=response)
+    cooldown = rate_limit_cooldown_seconds(exc)
+    assert 100 <= cooldown <= 130
+
+
+def test_rate_limit_cooldown_is_capped_at_one_hour() -> None:
+    from free_claude_code.providers.failure_policy import rate_limit_cooldown_seconds
+
+    exc = _openai_status_error(
+        openai.RateLimitError,
+        status_code=429,
+        message="daily quota",
+        body={"error": {"details": [{"retryDelay": "999999s"}]}},
+    )
+    assert rate_limit_cooldown_seconds(exc) == 3600.0
