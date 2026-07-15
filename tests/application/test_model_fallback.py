@@ -123,20 +123,27 @@ def test_is_free_candidate_requires_free_suffix_only_for_openrouter():
     assert is_free_candidate("nvidia_nim/nvidia/nemotron") is True
 
 
-def test_is_free_candidate_excludes_paid_gemini_pro_models():
+def test_is_free_candidate_excludes_paid_and_low_tpm_gemini_models():
     # Gemini Pro models are paid-only, even with billing enabled.
     assert is_free_candidate("gemini/models/gemini-2.5-pro") is False
     assert is_free_candidate("gemini/models/gemini-3.1-pro-preview") is False
     assert is_free_candidate("gemini/models/gemini-pro-latest") is False
-    # Flash/Flash-Lite/Gemma stay free.
+    # Gemma caps input at 16K tokens/minute - too low for real coding requests.
+    assert is_free_candidate("gemini/models/gemma-4-31b-it") is False
+    assert is_free_candidate("gemini/models/gemma-4-26b-a4b-it") is False
+    # Flash/Flash-Lite stay free and usable.
     assert is_free_candidate("gemini/models/gemini-3.5-flash") is True
-    assert is_free_candidate("gemini/models/gemma-4-31b-it") is True
+    assert is_free_candidate("gemini/models/gemini-3.1-flash-lite") is True
 
 
-def test_gemma_outranks_flash_so_derivation_prefers_the_high_quota_model():
-    assert rank_potency("gemini/models/gemma-4-31b-it") > rank_potency(
-        "gemini/models/gemini-3.5-flash"
+def test_gemma_is_excluded_from_derivation_candidates():
+    refs = eligible_candidate_refs(
+        [
+            _info("gemini/models/gemma-4-31b-it"),
+            _info("gemini/models/gemini-3.5-flash"),
+        ]
     )
+    assert refs == ["gemini/models/gemini-3.5-flash"]
 
 
 def test_is_chat_model_excludes_non_chat_markers():
@@ -166,16 +173,6 @@ def test_rank_potency_does_not_mistake_gemini_for_mini():
     # "gemini" contains "mini" as a substring but must not read as a small model.
     assert rank_potency("gemini/gemini-2.5-pro") > rank_potency(
         "gemini/gemini-2.5-flash"
-    )
-
-
-def test_gemma_ranks_by_size_not_by_family_name():
-    # Gemma 4 26B/31B are mid-size, not small: they must outrank flash-lite.
-    assert rank_potency("gemini/models/gemma-4-31b-it") > rank_potency(
-        "gemini/models/gemini-3.1-flash-lite"
-    )
-    assert rank_potency("gemini/models/gemma-4-26b-a4b-it") > rank_potency(
-        "gemini/models/gemini-3.1-flash-lite"
     )
 
 

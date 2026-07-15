@@ -343,7 +343,7 @@ async def test_derivation_mode_tries_strongest_candidate_first() -> None:
     model_cache = MagicMock()
     model_cache.cached_prefixed_model_infos.return_value = (
         ProviderModelInfo("open_router/small-model:free"),
-        ProviderModelInfo("gemini/models/gemma-4-31b-it"),
+        ProviderModelInfo("gemini/models/gemini-3.5-flash"),
     )
     model_router = MagicMock()
     model_router.resolve.side_effect = _resolve_ref
@@ -359,8 +359,8 @@ async def test_derivation_mode_tries_strongest_candidate_first() -> None:
     )
 
     assert [chunk async for chunk in stream] == ["event: message_stop\ndata: {}\n\n"]
-    # gemma-4-31b (mid-size) outranks the small OpenRouter model, so it is tried
-    # first, succeeds, and the weaker candidate is never reached.
+    # gemini-3.5-flash (mid-size) outranks the small OpenRouter model, so it is
+    # tried first, succeeds, and the weaker candidate is never reached.
     assert len(strong.stream_calls) == 1
     assert len(weak.stream_calls) == 0
 
@@ -405,7 +405,7 @@ async def test_derivation_skips_models_in_cooldown() -> None:
 async def test_derivation_all_in_cooldown_raises_overloaded() -> None:
     providers = {
         "gemini": FakeProvider(
-            cooldown_models={"gemini-3.1-flash-lite", "gemma-4-31b"}
+            cooldown_models={"gemini-3.1-flash-lite", "models/gemini-3.5-flash"}
         ),
     }
     executor = ProviderExecutor(
@@ -414,7 +414,7 @@ async def test_derivation_all_in_cooldown_raises_overloaded() -> None:
     )
     model_cache = MagicMock()
     model_cache.cached_prefixed_model_infos.return_value = (
-        ProviderModelInfo("gemini/gemma-4-31b"),
+        ProviderModelInfo("gemini/models/gemini-3.5-flash"),
         ProviderModelInfo("gemini/gemini-3.1-flash-lite"),
     )
     model_router = MagicMock()

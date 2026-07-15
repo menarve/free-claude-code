@@ -55,7 +55,7 @@ _WORD_RE = re.compile(r"[a-z]+")
 _SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*b(?![a-z0-9])")
 # Family version, e.g. gemini-3.1, gpt-5, claude-opus-4.8, qwen3.
 _VERSION_RE = re.compile(
-    r"(?:gpt-|gemini-|gemma-|claude-[a-z]+-|grok-|llama-|qwen-?|deepseek-|"
+    r"(?:gpt-|gemini-|claude-[a-z]+-|grok-|llama-|qwen-?|deepseek-|"
     r"mistral-|hy|nemotron-|command-r-?|-v|/v)(\d+(?:\.\d+)?)"
 )
 
@@ -115,15 +115,17 @@ def is_chat_model(model_ref: str) -> bool:
 
 
 def is_free_candidate(model_ref: str) -> bool:
-    """Return whether a ref is safe to try automatically without user consent.
+    """Return whether a ref is a good automatic derivation candidate.
 
-    Automatic derivation must never spend money on a model the user did not
-    explicitly configure:
+    Automatic derivation must never spend money nor waste attempts on models
+    that reliably reject real requests:
 
     - OpenRouter mixes free and paid models with no price field; only ``:free``
       ids are safe.
-    - Gemini serves Flash/Flash-Lite/Gemma free even with billing enabled, but
-      its ``pro`` models are paid-only, so those are excluded.
+    - Gemini serves Flash/Flash-Lite free even with billing enabled, but its
+      ``pro`` models are paid-only (excluded), and its ``gemma`` models cap
+      input at 16K tokens/minute - far below a real coding request - so they
+      reject almost everything and are excluded too.
 
     Other providers are single-tier (free, or bring-your-own-key at a rate the
     user already accepted), so they pass through.
@@ -132,7 +134,8 @@ def is_free_candidate(model_ref: str) -> bool:
     if model_ref.startswith("open_router/"):
         return model_ref.endswith(":free")
     if model_ref.startswith("gemini/"):
-        return "pro" not in model_ref.lower()
+        ref = model_ref.lower()
+        return "pro" not in ref and "gemma" not in ref
     return True
 
 
