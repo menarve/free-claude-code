@@ -30,6 +30,15 @@ _OVERLOAD_MARKERS = frozenset(
     }
 )
 _INTERNAL_ERROR_MARKERS = frozenset({"internal_server_error", "internal server error"})
+_CONTEXT_LENGTH_MARKERS = frozenset(
+    {
+        "context_length_exceeded",
+        "maximum context length",
+        "context window",
+        "reduce the length",
+        "too many tokens",
+    }
+)
 _AUTHENTICATION_MESSAGE = "Provider authentication failed. Check API key."
 _RATE_LIMIT_MESSAGE = "Provider rate limit reached. Please retry shortly."
 _INVALID_REQUEST_MESSAGE = "Invalid request sent to provider."
@@ -227,7 +236,11 @@ def _classify_provider_failure(
         return _failure(FailureKind.RATE_LIMIT, 429, _RATE_LIMIT_MESSAGE, True)
     if isinstance(exc, openai.BadRequestError):
         return _failure(
-            FailureKind.INVALID_REQUEST, 400, _INVALID_REQUEST_MESSAGE, False
+            FailureKind.INVALID_REQUEST,
+            400,
+            _INVALID_REQUEST_MESSAGE,
+            False,
+            model_fallback_eligible=_is_context_length_exceeded(exc),
         )
     if isinstance(exc, openai.APITimeoutError):
         return _failure(FailureKind.TIMEOUT, 500, _stable_upstream(500), True)
@@ -273,7 +286,11 @@ def _classify_provider_failure(
             return _failure(FailureKind.RATE_LIMIT, 429, _RATE_LIMIT_MESSAGE, True)
         if status == 400:
             return _failure(
-                FailureKind.INVALID_REQUEST, 400, _INVALID_REQUEST_MESSAGE, False
+                FailureKind.INVALID_REQUEST,
+                400,
+                _INVALID_REQUEST_MESSAGE,
+                False,
+                model_fallback_eligible=_is_context_length_exceeded(exc),
             )
         if status in (502, 503, 504):
             return overloaded_provider_failure()
@@ -302,13 +319,21 @@ def _failure(
     status_code: int,
     message: str,
     retryable: bool,
+    *,
+    model_fallback_eligible: bool = False,
 ) -> ExecutionFailure:
     return ExecutionFailure(
         kind=kind,
         status_code=status_code,
         message=message,
         retryable=retryable,
+        model_fallback_eligible=model_fallback_eligible,
     )
+
+
+def _is_context_length_exceeded(exc: BaseException) -> bool:
+    """Return whether a 400 reports the prompt exceeding the model's context window."""
+    return _has_marker(transient_error_text(exc), _CONTEXT_LENGTH_MARKERS)
 
 
 def _stable_upstream(status_code: int) -> str:

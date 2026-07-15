@@ -6,9 +6,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from free_claude_code.application.execution import ProviderExecutor
+from free_claude_code.application.model_metadata import ProviderModelInfo
 from free_claude_code.application.routing import ResolvedModel, RoutedMessagesRequest
 from free_claude_code.core.anthropic.models import Message, MessagesRequest
 from free_claude_code.core.async_iterators import AsyncCloseable
+from free_claude_code.core.failures import ExecutionFailure, FailureKind
 
 
 class FakeProvider:
@@ -67,6 +69,33 @@ class FailingStreamConstructionProvider(FakeProvider):
         thinking_enabled: bool | None = None,
     ) -> AsyncIterator[str]:
         raise RuntimeError("stream construction failed")
+
+
+class ContextLengthExceededProvider(FakeProvider):
+    async def stream_response(
+        self,
+        request: MessagesRequest,
+        input_tokens: int = 0,
+        *,
+        request_id: str | None = None,
+        thinking_enabled: bool | None = None,
+    ) -> AsyncIterator[str]:
+        self.stream_calls.append(
+            {
+                "request": request,
+                "input_tokens": input_tokens,
+                "request_id": request_id,
+                "thinking_enabled": thinking_enabled,
+            }
+        )
+        raise ExecutionFailure(
+            kind=FailureKind.INVALID_REQUEST,
+            status_code=400,
+            message="maximum context length exceeded",
+            retryable=False,
+            model_fallback_eligible=True,
+        )
+        yield ""  # pragma: no cover - never reached, keeps this an async generator
 
 
 def _routed_request() -> RoutedMessagesRequest:
@@ -179,3 +208,41 @@ def test_executor_preflight_failure_stays_before_token_count_and_stream() -> Non
 
     token_counter.assert_not_called()
     assert provider.stream_calls == []
+
+
+@pytest.mark.asyncio
+async def test_context_length_exceeded_falls_back_to_next_candidate() -> None:
+    primary = ContextLengthExceededProvider()
+    fallback = FakeProvider()
+    providers = {"provider": primary, "fallback_provider": fallback}
+    routed = _routed_request()
+    executor = ProviderExecutor(
+        lambda provider_id: providers[provider_id],
+        token_counter=lambda _messages, _system, _tools: 17,
+    )
+    model_cache = MagicMock()
+    model_cache.cached_prefixed_model_infos.return_value = (
+        ProviderModelInfo("fallback_provider/bigger-model"),
+    )
+    model_router = MagicMock()
+    model_router.resolve.return_value = ResolvedModel(
+        original_model="gateway-model",
+        provider_id="fallback_provider",
+        provider_model="bigger-model",
+        provider_model_ref="fallback_provider/bigger-model",
+        thinking_enabled=True,
+    )
+
+    stream = executor.stream(
+        routed,
+        wire_api="messages",
+        raw_log_label="FULL_PAYLOAD",
+        raw_log_payload={},
+        request_id="req_context_fallback",
+        model_router=model_router,
+        model_cache=model_cache,
+    )
+
+    assert [chunk async for chunk in stream] == ["event: message_stop\ndata: {}\n\n"]
+    assert len(primary.stream_calls) == 1
+    assert len(fallback.stream_calls) == 1

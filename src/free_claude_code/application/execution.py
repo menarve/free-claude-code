@@ -21,7 +21,7 @@ from free_claude_code.core.trace import (
 )
 
 from .model_fallback import build_fallback_chain
-from .ports import ProviderResolver
+from .ports import ProviderResolver, RequestRuntimeLease
 from .routing import ModelRouter, RoutedMessagesRequest
 
 TokenCounter = Callable[
@@ -47,7 +47,7 @@ class ProviderExecutor:
         self._generation_id = generation_id
         self._log_raw_payloads = log_raw_payloads
         self._model_router: ModelRouter | None = None
-        self._model_cache: object | None = None
+        self._model_cache: RequestRuntimeLease | None = None
 
     def stream(
         self,
@@ -58,7 +58,7 @@ class ProviderExecutor:
         raw_log_payload: object,
         request_id: str,
         model_router: ModelRouter | None = None,
-        model_cache: object | None = None,
+        model_cache: RequestRuntimeLease | None = None,
     ) -> AsyncIterator[str]:
         """Preflight synchronously, then return the traced provider stream."""
         # Per-request fallback wiring (the executor is reused across requests).
@@ -164,7 +164,10 @@ class ProviderExecutor:
                 except BaseException as exc:
                     last_error = exc
                     failure = find_execution_failure(exc)
-                    if committed or (failure is not None and not failure.retryable):
+                    non_switchable_failure = failure is not None and not (
+                        failure.retryable or failure.model_fallback_eligible
+                    )
+                    if committed or non_switchable_failure:
                         # Already delivered output, or a non-capacity error for
                         # this candidate (auth/bad-request) -> do not switch models.
                         raise

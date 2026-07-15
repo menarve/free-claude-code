@@ -33,7 +33,7 @@ from free_claude_code.api.web_tools.request import (
 from free_claude_code.api.web_tools.streaming import stream_web_server_tool_response
 from free_claude_code.application.errors import ApplicationError, InvalidRequestError
 from free_claude_code.application.execution import ProviderExecutor, TokenCounter
-from free_claude_code.application.ports import ProviderResolver
+from free_claude_code.application.ports import ProviderResolver, RequestRuntimeLease
 from free_claude_code.application.routing import ModelRouter, RoutedMessagesRequest
 from free_claude_code.config.settings import Settings
 from free_claude_code.core.anthropic import (
@@ -76,7 +76,7 @@ class MessagesHandler:
         token_counter: TokenCounter = get_token_count,
         provider_executor: ProviderExecutor | None = None,
         generation_id: int | None = None,
-        model_cache: object | None = None,
+        model_cache: RequestRuntimeLease | None = None,
     ) -> None:
         self._settings = settings
         self._model_router = model_router or ModelRouter(settings)

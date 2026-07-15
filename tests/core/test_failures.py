@@ -48,6 +48,7 @@ def test_execution_failure_is_the_direct_frozen_slotted_exception() -> None:
         "status_code",
         "message",
         "retryable",
+        "model_fallback_eligible",
     )
     assert ExecutionFailure.__slots__ == (
         "kind",

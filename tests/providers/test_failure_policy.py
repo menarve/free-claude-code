@@ -58,6 +58,7 @@ class _ClassificationCase:
     status_code: int
     retryable: bool
     rate_limit_block_seconds: int | None = None
+    model_fallback_eligible: bool = False
 
 
 _CASES = (
@@ -94,6 +95,21 @@ _CASES = (
         FailureKind.INVALID_REQUEST,
         400,
         False,
+    ),
+    _ClassificationCase(
+        "openai_bad_request_context_length_is_model_fallback_eligible",
+        lambda: _openai_status_error(
+            openai.BadRequestError,
+            status_code=400,
+            message=(
+                "This endpoint's maximum context length is 262144 tokens. "
+                "However, you requested about 1281890 tokens."
+            ),
+        ),
+        FailureKind.INVALID_REQUEST,
+        400,
+        False,
+        model_fallback_eligible=True,
     ),
     _ClassificationCase(
         "openai_overload_marker",
@@ -223,6 +239,7 @@ def test_raw_provider_failure_maps_to_canonical_failure(
     assert failure.kind is case.kind
     assert failure.status_code == case.status_code
     assert failure.retryable is case.retryable
+    assert failure.model_fallback_eligible is case.model_fallback_eligible
     assert failure.message.strip()
     assert "Request ID: req_classification" in failure.message
     assert "SECRET" not in failure.message

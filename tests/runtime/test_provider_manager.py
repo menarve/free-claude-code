@@ -68,6 +68,9 @@ async def test_startup_generation_lease_and_shutdown_close_exactly_once() -> Non
     assert lease.settings is settings
     assert lease.is_provider_cached("cached") is True
     assert lease.resolve_provider("nvidia_nim") is factory.runtimes[0].provider
+
+    manager.cache_model_infos("nvidia_nim", {ProviderModelInfo("cached")})
+    assert lease.cached_prefixed_model_infos() == manager.cached_prefixed_model_infos()
     await lease.release()
     await lease.release()
     await manager.close()

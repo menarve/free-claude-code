@@ -63,6 +63,9 @@ class ProviderGenerationLease:
     def resolve_provider(self, provider_id: str) -> BaseProvider:
         return self._generation.runtime.resolve_provider(provider_id)
 
+    def cached_prefixed_model_infos(self) -> tuple[ProviderModelInfo, ...]:
+        return self._manager.cached_prefixed_model_infos()
+
     async def release(self) -> None:
         if self._released:
             return
