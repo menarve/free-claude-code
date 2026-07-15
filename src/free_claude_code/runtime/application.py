@@ -1,6 +1,7 @@
 """Single owner for application startup, shutdown, and runtime operations."""
 
 import asyncio
+import contextlib
 import inspect
 import logging
 import os
@@ -41,6 +42,11 @@ from free_claude_code.messaging.voice import Transcriber
 from .provider_manager import ProviderRuntimeManager
 
 RestartCallback = Callable[[], Awaitable[None] | None]
+
+# How often the background task re-discovers each provider's model list so the
+# derivation catalog reflects newly available or newly revoked models without a
+# server restart.
+MODEL_LIST_REFRESH_INTERVAL_SECONDS = 12 * 60 * 60
 
 
 async def best_effort(
@@ -121,6 +127,7 @@ class ApplicationRuntime:
         self._closed = False
         self._provider_manager_closed = False
         self._close_lock = asyncio.Lock()
+        self._model_refresh_task: asyncio.Task[None] | None = None
 
     @property
     def settings(self) -> Settings:
@@ -139,6 +146,9 @@ class ApplicationRuntime:
             warn_if_process_auth_token(self.settings)
             await self._validate_configured_models_best_effort()
             self.provider_manager.start_model_list_refresh()
+            self._model_refresh_task = asyncio.create_task(
+                self._periodic_model_refresh(), name="model-list-refresh"
+            )
             await self._start_messaging_if_configured()
             logging.getLogger("uvicorn.error").info(
                 "Admin UI: %s (local-only)",
@@ -398,7 +408,32 @@ class ApplicationRuntime:
             await workflow.publish_startup_notice(components.startup_notice)
         logger.info("{} platform started with messaging workflow", components.name)
 
+    async def _periodic_model_refresh(self) -> None:
+        """Re-discover every provider's model list on a fixed interval."""
+        while True:
+            await asyncio.sleep(MODEL_LIST_REFRESH_INTERVAL_SECONDS)
+            try:
+                await self.provider_manager.refresh_model_list_cache()
+                logger.info("Periodic model list refresh complete")
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    "Periodic model list refresh failed: exc_type={}",
+                    type(exc).__name__,
+                )
+
+    async def _cancel_model_refresh(self) -> None:
+        task = self._model_refresh_task
+        self._model_refresh_task = None
+        if task is None or task.done():
+            return
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
     async def _close_owned_resources(self) -> bool:
+        await self._cancel_model_refresh()
         if not await self._cleanup_messaging():
             return False
         if not await self._cleanup_transcriber():

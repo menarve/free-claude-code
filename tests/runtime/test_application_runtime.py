@@ -935,3 +935,58 @@ async def test_composition_publishes_startup_notice_after_runtime_and_repair() -
     assert "plans_directory" not in manager_constructor.call_args.kwargs
 
     assert await runtime.close() is True
+
+
+@pytest.mark.asyncio
+async def test_periodic_model_refresh_refreshes_each_interval_and_survives_errors(
+    monkeypatch,
+) -> None:
+    manager = MagicMock()
+    refresh_calls = 0
+
+    async def refresh() -> None:
+        nonlocal refresh_calls
+        refresh_calls += 1
+        if refresh_calls == 1:
+            raise RuntimeError("transient discovery failure")
+
+    manager.refresh_model_list_cache = refresh
+    runtime = ApplicationRuntime(manager, transcriber=None)
+
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+        if len(sleep_calls) >= 3:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(
+        "free_claude_code.runtime.application.asyncio.sleep", fake_sleep
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await runtime._periodic_model_refresh()
+
+    from free_claude_code.runtime.application import (
+        MODEL_LIST_REFRESH_INTERVAL_SECONDS,
+    )
+
+    assert sleep_calls == [MODEL_LIST_REFRESH_INTERVAL_SECONDS] * 3
+    # First refresh raised but the loop continued to a second refresh.
+    assert refresh_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_close_cancels_the_periodic_model_refresh_task() -> None:
+    manager = ProviderRuntimeManager(_settings("nvidia_nim/model"))
+    runtime = ApplicationRuntime(manager, transcriber=None)
+
+    async def never() -> None:
+        await asyncio.Event().wait()
+
+    task = asyncio.create_task(never())
+    runtime._model_refresh_task = task
+
+    assert await runtime.close() is True
+    assert task.cancelled()
+    assert runtime._model_refresh_task is None
