@@ -113,7 +113,7 @@ def test_admin_static_usage_tab_only_lists_configured_model_roles():
     assert '["MODEL_OPUS", "Opus"]' in script
     assert '["MODEL_SONNET", "Sonnet"]' in script
     assert '["MODEL_HAIKU", "Haiku"]' in script
-    assert "function configuredModelRoles()" in script
+    assert "function configuredModelListOrder()" in script
     assert '["list", "Model list order"]' in script
     assert '["usage", "Most used"]' in script
 

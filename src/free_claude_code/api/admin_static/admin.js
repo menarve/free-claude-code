@@ -252,20 +252,18 @@ function renderSections(sections, fields) {
   });
 }
 
-function configuredModelRoles() {
-  const roleLabelsByRef = new Map();
+function configuredModelListOrder() {
+  // Distinct configured model refs, keyed to their first appearance in the
+  // Default/Fable/Opus/Sonnet/Haiku list (several roles may share a ref).
   const listOrderByRef = new Map();
-  MODEL_ROLE_FIELDS.forEach(([key, label], index) => {
+  MODEL_ROLE_FIELDS.forEach(([key], index) => {
     const field = state.fields.get(key);
     const ref = field && field.value ? field.value.trim() : "";
-    if (!ref) return;
-    if (!roleLabelsByRef.has(ref)) {
-      roleLabelsByRef.set(ref, []);
+    if (ref && !listOrderByRef.has(ref)) {
       listOrderByRef.set(ref, index);
     }
-    roleLabelsByRef.get(ref).push(label);
   });
-  return { roleLabelsByRef, listOrderByRef };
+  return listOrderByRef;
 }
 
 function renderUsage(usage) {
@@ -317,11 +315,10 @@ function renderUsage(usage) {
 
   section.appendChild(controls);
 
-  const { roleLabelsByRef, listOrderByRef } = configuredModelRoles();
+  const listOrderByRef = configuredModelListOrder();
   const emptyStats = { requests: 0, errors: 0, input_tokens: 0, last_used_at: null };
-  const rows = Array.from(roleLabelsByRef.entries()).map(([modelRef, roleLabels]) => ({
+  const rows = Array.from(listOrderByRef.keys()).map((modelRef) => ({
     modelRef,
-    roleLabels,
     stats: (usage.models && usage.models[modelRef]) || emptyStats,
   }));
 
@@ -343,17 +340,16 @@ function renderUsage(usage) {
     table.className = "usage-table";
     const thead = document.createElement("thead");
     thead.innerHTML =
-      "<tr><th>Role</th><th>Model</th><th>Requests</th><th>Input tokens</th><th>Errors</th><th>Last used</th></tr>";
+      "<tr><th>Model</th><th>Requests</th><th>Input tokens</th><th>Errors</th><th>Last used</th></tr>";
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
-    rows.forEach(({ modelRef, roleLabels, stats }) => {
+    rows.forEach(({ modelRef, stats }) => {
       const row = document.createElement("tr");
       const lastUsed = stats.last_used_at
         ? new Date(stats.last_used_at).toLocaleString()
         : "-";
       row.innerHTML = `
-        <td>${roleLabels.join(", ")}</td>
         <td>${modelRef}</td>
         <td>${stats.requests}</td>
         <td>${stats.input_tokens.toLocaleString()}</td>
