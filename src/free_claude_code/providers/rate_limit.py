@@ -201,6 +201,12 @@ class ProviderRateLimiter:
                 )
                 if status is None and not transport_error:
                     raise
+                # A 429 means this model has no quota right now; retrying inline
+                # won't refill it in a few seconds. Fail fast so the caller can
+                # cool this model down and move to the next one. Transient 5xx and
+                # transport errors still retry, since they can genuinely recover.
+                if status == 429:
+                    raise
 
                 if status is None:
                     label = f"Provider transport error ({type(e).__name__})"

@@ -14,10 +14,14 @@ from free_claude_code.core.failures import ExecutionFailure, FailureKind
 
 
 class FakeProvider:
-    def __init__(self) -> None:
+    def __init__(self, cooldown_models: set[str] | None = None) -> None:
         self.preflight_calls: list[tuple[MessagesRequest, bool]] = []
         self.stream_calls: list[dict[str, object]] = []
         self.stream_close_calls = 0
+        self._cooldown_models = cooldown_models or set()
+
+    def is_model_in_cooldown(self, model: str) -> bool:
+        return model in self._cooldown_models
 
     def preflight_stream(
         self,
@@ -359,6 +363,76 @@ async def test_derivation_mode_tries_strongest_candidate_first() -> None:
     # first, succeeds, and the weaker candidate is never reached.
     assert len(strong.stream_calls) == 1
     assert len(weak.stream_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_derivation_skips_models_in_cooldown() -> None:
+    # The strongest model is in cooldown, so derivation skips it (no attempt)
+    # and goes straight to the next available one.
+    working = FakeProvider()
+    providers = {
+        "open_router": FakeProvider(cooldown_models={"nemotron-550b:free"}),
+        "gemini": working,
+    }
+    executor = ProviderExecutor(
+        lambda provider_id: providers[provider_id],
+        token_counter=lambda _messages, _system, _tools: 5,
+    )
+    model_cache = MagicMock()
+    model_cache.cached_prefixed_model_infos.return_value = (
+        ProviderModelInfo("open_router/nemotron-550b:free"),
+        ProviderModelInfo("gemini/gemini-3.1-flash-lite"),
+    )
+    model_router = MagicMock()
+    model_router.resolve.side_effect = _resolve_ref
+
+    stream = executor.stream(
+        _derivation_routed_request(),
+        wire_api="messages",
+        raw_log_label="FULL_PAYLOAD",
+        raw_log_payload={},
+        request_id="req_cooldown_skip",
+        model_router=model_router,
+        model_cache=model_cache,
+    )
+
+    assert [chunk async for chunk in stream] == ["event: message_stop\ndata: {}\n\n"]
+    assert providers["open_router"].stream_calls == []  # skipped, never attempted
+    assert len(working.stream_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_derivation_all_in_cooldown_raises_overloaded() -> None:
+    providers = {
+        "gemini": FakeProvider(
+            cooldown_models={"gemini-3.1-flash-lite", "gemma-4-31b"}
+        ),
+    }
+    executor = ProviderExecutor(
+        lambda provider_id: providers[provider_id],
+        token_counter=lambda _messages, _system, _tools: 5,
+    )
+    model_cache = MagicMock()
+    model_cache.cached_prefixed_model_infos.return_value = (
+        ProviderModelInfo("gemini/gemma-4-31b"),
+        ProviderModelInfo("gemini/gemini-3.1-flash-lite"),
+    )
+    model_router = MagicMock()
+    model_router.resolve.side_effect = _resolve_ref
+
+    stream = executor.stream(
+        _derivation_routed_request(),
+        wire_api="messages",
+        raw_log_label="FULL_PAYLOAD",
+        raw_log_payload={},
+        request_id="req_all_cooldown",
+        model_router=model_router,
+        model_cache=model_cache,
+    )
+
+    with pytest.raises(ExecutionFailure) as exc_info:
+        await anext(stream)
+    assert exc_info.value.status_code == 429
 
 
 @pytest.mark.asyncio

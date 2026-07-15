@@ -156,9 +156,15 @@ class ProviderExecutor:
                     candidate_provider_id = resolved.provider_id
                     candidate_provider_model = resolved.provider_model
                     candidate_thinking = resolved.thinking_enabled
+                    candidate_provider = self._provider_resolver(candidate_provider_id)
+                    # Skip models a recent rate limit put in cooldown instead of
+                    # waiting on a lost cause: derivation moves to the next model.
+                    if derivation and candidate_provider.is_model_in_cooldown(
+                        candidate_provider_model
+                    ):
+                        continue
                     candidate_request = routed.request.model_copy(deep=True)
                     candidate_request.model = candidate_provider_model
-                    candidate_provider = self._provider_resolver(candidate_provider_id)
                     candidate_provider.preflight_stream(
                         candidate_request, thinking_enabled=candidate_thinking
                     )
@@ -236,6 +242,17 @@ class ProviderExecutor:
                         )
             if last_error is not None:
                 raise last_error
+            if derivation:
+                # Every candidate was in cooldown (all recently rate limited).
+                raise ExecutionFailure(
+                    kind=FailureKind.OVERLOADED,
+                    status_code=429,
+                    message=(
+                        "All accessible models are rate limited right now. "
+                        "Please retry shortly."
+                    ),
+                    retryable=True,
+                )
 
         stream_trace: dict[str, object] = {
             "request_id": request_id,

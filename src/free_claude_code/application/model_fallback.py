@@ -24,6 +24,9 @@ from free_claude_code.application.model_metadata import ProviderModelInfo
 # break ties within a class. Markers are matched against whole letter-tokens
 # (not substrings) so "flash-lite" reads as small and "gemini" is never
 # mistaken for "mini".
+# "gemma" is intentionally NOT a small marker: Gemma 4 26B/31B are mid-size
+# models whose parameter count places them correctly. Their class is decided by
+# the "26b"/"31b" in the name, not the family word.
 _SMALL_TOKENS = frozenset(
     {
         "lite",
@@ -34,7 +37,6 @@ _SMALL_TOKENS = frozenset(
         "small",
         "haiku",
         "xs",
-        "gemma",
         "phi",
         "oss",
     }
@@ -92,6 +94,8 @@ _NON_CHAT_MARKERS = (
     "detect",
     "speech",
     "voxtral",
+    "lyria",
+    "veo",
 )
 
 

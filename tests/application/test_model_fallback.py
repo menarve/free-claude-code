@@ -153,6 +153,21 @@ def test_rank_potency_does_not_mistake_gemini_for_mini():
     )
 
 
+def test_gemma_ranks_by_size_not_by_family_name():
+    # Gemma 4 26B/31B are mid-size, not small: they must outrank flash-lite.
+    assert rank_potency("gemini/models/gemma-4-31b-it") > rank_potency(
+        "gemini/models/gemini-3.1-flash-lite"
+    )
+    assert rank_potency("gemini/models/gemma-4-26b-a4b-it") > rank_potency(
+        "gemini/models/gemini-3.1-flash-lite"
+    )
+
+
+def test_music_and_video_models_are_excluded_as_non_chat():
+    assert is_chat_model("gemini/models/lyria-3-pro-preview") is False
+    assert is_chat_model("gemini/models/veo-3-generate") is False
+
+
 def test_rank_potency_breaks_ties_by_version_then_params():
     assert rank_potency("gemini/gemini-3.5-flash") > rank_potency(
         "gemini/gemini-2.0-flash"

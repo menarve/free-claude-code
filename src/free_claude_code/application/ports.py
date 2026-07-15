@@ -29,6 +29,10 @@ class ProviderPort(Protocol):
         thinking_enabled: bool,
     ) -> AsyncIterator[str]: ...
 
+    def is_model_in_cooldown(self, model: str) -> bool:
+        """Whether a recent rate-limit put this model in a reactive cooldown."""
+        ...
+
 
 ProviderResolver = Callable[[str], ProviderPort]
 

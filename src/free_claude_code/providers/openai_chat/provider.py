@@ -136,6 +136,10 @@ class OpenAIChatProvider(BaseProvider):
         """Validate OpenAI-chat request conversion before streaming."""
         self._build_request_body(request, thinking_enabled=thinking_enabled)
 
+    def is_model_in_cooldown(self, model: str) -> bool:
+        """Whether this model is currently in a reactive rate-limit cooldown."""
+        return self._rate_limiter.is_blocked(model)
+
     def _handle_extra_reasoning(
         self, delta: Any, ledger: AnthropicStreamLedger, *, thinking_enabled: bool
     ) -> Iterator[str]:

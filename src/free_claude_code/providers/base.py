@@ -134,3 +134,10 @@ class BaseProvider(ABC):
         thinking_enabled: bool | None = None,
     ) -> AsyncIterator[str]:
         """Stream response in Anthropic SSE format."""
+
+    def is_model_in_cooldown(self, model: str) -> bool:
+        """Whether a recent rate limit put this model in a reactive cooldown.
+
+        Providers without a rate limiter never report a cooldown.
+        """
+        return False

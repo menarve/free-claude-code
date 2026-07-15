@@ -280,6 +280,28 @@ class TestProviderRateLimiter:
         with pytest.raises(ValueError, match="reactive block duration must be > 0"):
             limiter.extend_reactive_block(seconds)
 
+    @pytest.mark.asyncio
+    async def test_429_fails_fast_without_inline_retries(self) -> None:
+        """A 429 must not retry inline: the quota won't refill in seconds."""
+        limiter = ProviderRateLimiter(rate_limit=100, rate_window=60)
+        calls = 0
+
+        async def rate_limited(**_kwargs) -> None:
+            nonlocal calls
+            calls += 1
+            raise openai.RateLimitError(
+                "Too many requests",
+                response=httpx.Response(
+                    429, request=httpx.Request("POST", "https://p.test/v1")
+                ),
+                body=None,
+            )
+
+        with pytest.raises(openai.RateLimitError):
+            await limiter.execute_with_retry(rate_limited, model="m")
+
+        assert calls == 1  # one attempt only, no inline retries
+
     def test_reactive_block_is_per_model_not_provider_wide(self) -> None:
         """A 429 on one model must not block the provider's other models."""
         limiter = ProviderRateLimiter(rate_limit=100, rate_window=60)
@@ -413,60 +435,51 @@ class TestProviderRateLimiter:
             )
 
     @pytest.mark.asyncio
-    async def test_execute_with_retry_succeeds_on_retry(self):
-        """429 then success returns result."""
+    async def test_execute_with_retry_does_not_retry_openai_429(self):
+        """A 429 fails at the first attempt: quota won't refill inline."""
         import openai
         from httpx import Request, Response
 
         limiter = ProviderRateLimiter(rate_limit=100, rate_window=60)
+        call_count = 0
 
-        def make_429():
-            return openai.RateLimitError(
+        async def always_429(**_kwargs):
+            nonlocal call_count
+            call_count += 1
+            raise openai.RateLimitError(
                 "rate limited",
                 response=Response(429, request=Request("POST", "http://x")),
                 body={},
             )
 
-        call_count = 0
-
-        async def fail_then_ok():
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise make_429()
-            return "ok"
-
-        result = await limiter.execute_with_retry(
-            fail_then_ok, max_retries=2, base_delay=0.01, max_delay=0.1, jitter=0
-        )
-        assert result == "ok"
-        assert call_count == 2
+        with pytest.raises(openai.RateLimitError):
+            await limiter.execute_with_retry(
+                always_429, max_retries=2, base_delay=0.01, max_delay=0.1, jitter=0
+            )
+        assert call_count == 1
 
     @pytest.mark.asyncio
-    async def test_execute_with_retry_succeeds_on_httpx_429(self):
-        """HTTP 429 as httpx.HTTPStatusError then success returns result."""
+    async def test_execute_with_retry_does_not_retry_httpx_429(self):
+        """An httpx 429 also fails fast without inline retries."""
         import httpx
         from httpx import Request, Response
 
         limiter = ProviderRateLimiter(rate_limit=100, rate_window=60)
-
         call_count = 0
 
-        async def fail_then_ok():
+        async def always_429(**_kwargs):
             nonlocal call_count
             call_count += 1
-            if call_count == 1:
-                r = Response(429, request=Request("POST", "http://x"), text="slow")
-                raise httpx.HTTPStatusError(
-                    "Too Many Requests", request=r.request, response=r
-                )
-            return "ok"
+            r = Response(429, request=Request("POST", "http://x"), text="slow")
+            raise httpx.HTTPStatusError(
+                "Too Many Requests", request=r.request, response=r
+            )
 
-        result = await limiter.execute_with_retry(
-            fail_then_ok, max_retries=2, base_delay=0.01, max_delay=0.1, jitter=0
-        )
-        assert result == "ok"
-        assert call_count == 2
+        with pytest.raises(httpx.HTTPStatusError):
+            await limiter.execute_with_retry(
+                always_429, max_retries=2, base_delay=0.01, max_delay=0.1, jitter=0
+            )
+        assert call_count == 1
 
     @pytest.mark.parametrize("status_code", [500, 502, 503, 504])
     @pytest.mark.asyncio

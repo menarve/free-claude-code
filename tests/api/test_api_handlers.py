@@ -46,6 +46,9 @@ class FakeProvider:
     ) -> None:
         self.preflight_calls.append((request, thinking_enabled))
 
+    def is_model_in_cooldown(self, model: str) -> bool:
+        return False
+
     async def cleanup(self) -> None:
         return None
 
