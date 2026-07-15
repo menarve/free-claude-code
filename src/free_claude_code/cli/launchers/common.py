@@ -3,6 +3,7 @@
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Mapping
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -12,9 +13,12 @@ from free_claude_code.cli.process_registry import (
     register_pid,
     unregister_pid,
 )
+from free_claude_code.config.paths import server_log_path
 
 PROXY_PREFLIGHT_PATH = "/health"
 PROXY_PREFLIGHT_TIMEOUT_SECONDS = 1.5
+SERVER_AUTOSTART_TIMEOUT_SECONDS = 20.0
+SERVER_AUTOSTART_POLL_SECONDS = 0.25
 
 
 def preflight_proxy(proxy_root_url: str) -> str | None:
@@ -35,6 +39,56 @@ def preflight_proxy(proxy_root_url: str) -> str | None:
     if not 200 <= status_code < 300:
         return f"returned HTTP {status_code}"
     return None
+
+
+def ensure_server_running(
+    proxy_root_url: str,
+    *,
+    startup_timeout_seconds: float = SERVER_AUTOSTART_TIMEOUT_SECONDS,
+) -> str | None:
+    """Start `fcc-server` in the background when the local proxy is unreachable.
+
+    Returns an error message if the proxy is still unreachable after trying to
+    start it; ``None`` once the health check succeeds. The spawned server is
+    detached (its own session) so it keeps running after this client exits,
+    matching how a user would run `fcc-server` in another terminal by hand.
+    """
+
+    error = preflight_proxy(proxy_root_url)
+    if error is None:
+        return None
+
+    server_binary = shutil.which("fcc-server")
+    if server_binary is None:
+        return f"proxy unreachable ({error}) and the fcc-server executable was not found"
+
+    print(
+        f"Free Claude Code proxy is not running at {proxy_root_url}; starting fcc-server...",
+        file=sys.stderr,
+    )
+
+    log_path = server_log_path()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "a", encoding="utf-8") as log_file:
+        subprocess.Popen(
+            [server_binary],
+            stdout=log_file,
+            stderr=log_file,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+
+    deadline = time.monotonic() + startup_timeout_seconds
+    while time.monotonic() < deadline:
+        if preflight_proxy(proxy_root_url) is None:
+            print(f"fcc-server is up at {proxy_root_url}", file=sys.stderr)
+            return None
+        time.sleep(SERVER_AUTOSTART_POLL_SECONDS)
+
+    return (
+        f"fcc-server did not become ready within {startup_timeout_seconds:g}s "
+        f"(see {log_path} for details)"
+    )
 
 
 def resolve_client_binary(

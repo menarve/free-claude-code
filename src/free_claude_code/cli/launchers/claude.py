@@ -11,7 +11,7 @@ from free_claude_code.cli.claude_env import (
 from free_claude_code.config.server_urls import local_proxy_root_url
 from free_claude_code.config.settings import get_settings
 
-from .common import preflight_proxy, resolve_client_binary, run_client_process
+from .common import ensure_server_running, resolve_client_binary, run_client_process
 
 _DISPLAY_NAME = "Claude Code"
 _INSTALL_HINT = "Install Claude Code with: npm install -g @anthropic-ai/claude-code"
@@ -22,7 +22,7 @@ def launch(argv: Sequence[str] | None = None) -> None:
 
     settings = get_settings()
     proxy_root_url = local_proxy_root_url(settings)
-    if error := preflight_proxy(proxy_root_url):
+    if error := ensure_server_running(proxy_root_url):
         print(
             f"Free Claude Code proxy is not reachable at {proxy_root_url}: {error}",
             file=sys.stderr,
