@@ -152,6 +152,15 @@ async def refresh_models(
     return await services.admin.refresh_models()
 
 
+@router.get("/admin/api/usage")
+async def usage_stats(
+    request: Request,
+    services: ApiServices = Depends(get_services),
+):
+    require_loopback_admin(request)
+    return services.usage_stats.snapshot()
+
+
 def _filtered_values(values: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in values.items() if key in FIELD_BY_KEY}
 

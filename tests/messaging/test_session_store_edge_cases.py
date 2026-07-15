@@ -8,10 +8,10 @@ from unittest.mock import patch
 
 import pytest
 
-import free_claude_code.messaging.session.persistence as persistence_module
+import free_claude_code.core.json_persistence as persistence_module
+from free_claude_code.core.json_persistence import DebouncedJsonPersistence
 from free_claude_code.messaging.models import MessageScope
 from free_claude_code.messaging.session import SessionStore
-from free_claude_code.messaging.session.persistence import DebouncedJsonPersistence
 from free_claude_code.messaging.trees import TreeIdentity, TreeSnapshot
 
 TELEGRAM_C1 = MessageScope(platform="telegram", chat_id="c1")
@@ -167,7 +167,7 @@ class TestSessionStoreSaveEdgeCases:
         )
         with (
             patch(
-                "free_claude_code.messaging.session.persistence.os.replace",
+                "free_claude_code.core.json_persistence.os.replace",
                 side_effect=OSError("disk full"),
             ),
             pytest.raises(OSError, match="disk full"),
@@ -217,7 +217,7 @@ class TestSessionStoreSaveEdgeCases:
         )
 
         with patch(
-            "free_claude_code.messaging.session.persistence.os.replace",
+            "free_claude_code.core.json_persistence.os.replace",
             side_effect=OSError("timer disk full"),
         ):
             FakeTimer.instances[-1].fire()
@@ -473,7 +473,7 @@ class TestSessionStoreAtomicWrites:
 
         with (
             patch(
-                "free_claude_code.messaging.session.persistence.os.replace",
+                "free_claude_code.core.json_persistence.os.replace",
                 side_effect=OSError("replace failed"),
             ),
             pytest.raises(OSError, match="replace failed"),
@@ -496,7 +496,7 @@ class TestSessionStoreAtomicWrites:
 
         with (
             patch(
-                "free_claude_code.messaging.session.persistence.os.replace",
+                "free_claude_code.core.json_persistence.os.replace",
                 side_effect=OSError("clear replace failed"),
             ),
             pytest.raises(OSError, match="clear replace failed"),

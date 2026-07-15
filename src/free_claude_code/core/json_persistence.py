@@ -1,4 +1,4 @@
-"""Atomic JSON persistence for messaging session state."""
+"""Atomic, debounced JSON persistence shared across process-lifetime state."""
 
 import contextlib
 import json

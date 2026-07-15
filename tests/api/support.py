@@ -1,12 +1,16 @@
 """Explicit test composition for the API adapter."""
 
+import tempfile
+import uuid
 from collections.abc import MutableMapping
+from pathlib import Path
 
 from fastapi import FastAPI
 
 from free_claude_code.api.app import create_app
 from free_claude_code.api.ports import ApiServices
 from free_claude_code.config.settings import Settings
+from free_claude_code.core.usage_stats import UsageStatsTracker
 from free_claude_code.providers.base import BaseProvider
 from free_claude_code.providers.runtime import ProviderRuntime
 from free_claude_code.runtime.application import ApplicationRuntime, RestartCallback
@@ -36,11 +40,15 @@ def create_test_app(
         transcriber=None,
         restart_callback=restart_callback,
     )
+    usage_stats_path = (
+        Path(tempfile.gettempdir()) / f"fcc-test-usage-{uuid.uuid4()}.json"
+    )
     return create_app(
         ApiServices(
             requests=manager,
             admin=runtime,
             tasks=runtime,
+            usage_stats=UsageStatsTracker(str(usage_stats_path)),
         )
     )
 

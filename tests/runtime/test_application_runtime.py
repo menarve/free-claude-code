@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import free_claude_code.messaging.session.persistence as persistence_module
+import free_claude_code.core.json_persistence as persistence_module
 from free_claude_code.config.admin.persistence import PreparedAdminUpdate
 from free_claude_code.config.settings import Settings
 from free_claude_code.messaging.command_context import StopOutcome

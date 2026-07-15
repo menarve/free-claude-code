@@ -15,7 +15,7 @@ from free_claude_code.api.response_streams import (
 )
 from free_claude_code.application.errors import ApplicationError, InvalidRequestError
 from free_claude_code.application.execution import ProviderExecutor
-from free_claude_code.application.ports import ProviderResolver
+from free_claude_code.application.ports import ProviderResolver, UsageStatsPort
 from free_claude_code.application.routing import ModelRouter
 from free_claude_code.config.settings import Settings
 from free_claude_code.core.anthropic import MessagesRequest
@@ -41,10 +41,12 @@ class ResponsesHandler:
         responses_adapter: OpenAIResponsesAdapter | None = None,
         provider_executor: ProviderExecutor | None = None,
         generation_id: int | None = None,
+        usage_stats: UsageStatsPort | None = None,
     ) -> None:
         self._settings = settings
         self._model_router = model_router or ModelRouter(settings)
         self._responses_adapter = responses_adapter or OpenAIResponsesAdapter()
+        self._usage_stats = usage_stats
         self._provider_executor = provider_executor or ProviderExecutor(
             provider_resolver,
             generation_id=generation_id,
@@ -76,6 +78,7 @@ class ResponsesHandler:
                 raw_log_label="FULL_RESPONSES_PAYLOAD",
                 raw_log_payload=request_payload,
                 request_id=request_id,
+                usage_stats=self._usage_stats,
             )
             return await openai_responses_sse_streaming_response(
                 self._responses_adapter.iter_sse_from_anthropic(

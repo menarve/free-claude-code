@@ -10,6 +10,7 @@ MESSAGING_STATE_DIRNAME = "agent_workspace"
 FCC_LOGS_DIRNAME = "logs"
 SERVER_LOG_FILENAME = "server.log"
 CODEX_MODEL_CATALOG_FILENAME = "codex-model-catalog.json"
+USAGE_STATS_FILENAME = "usage_stats.json"
 
 
 def config_dir_path() -> Path:
@@ -50,3 +51,9 @@ def codex_model_catalog_path() -> Path:
     """Return the generated Codex model catalog path."""
 
     return config_dir_path() / CODEX_MODEL_CATALOG_FILENAME
+
+
+def usage_stats_path() -> Path:
+    """Return the persisted per-model usage stats path."""
+
+    return config_dir_path() / USAGE_STATS_FILENAME

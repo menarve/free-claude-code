@@ -5,6 +5,7 @@ from copy import deepcopy
 
 from loguru import logger
 
+from free_claude_code.core.json_persistence import DebouncedJsonPersistence
 from free_claude_code.messaging.models import MessageScope
 from free_claude_code.messaging.trees import (
     ConversationSnapshot,
@@ -13,7 +14,6 @@ from free_claude_code.messaging.trees import (
 )
 
 from .managed_message_log import ManagedMessageLog
-from .persistence import DebouncedJsonPersistence
 
 
 class SessionStore:

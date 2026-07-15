@@ -1115,8 +1115,9 @@ same ownership boundary.
 and message IDs to a JSON file under the managed messaging state directory.
 `SessionStore` reads existing `sessions.json` files but exposes typed snapshot
 APIs to runtime code and deep-copies snapshot ingress and egress so no caller
-shares mutable persisted state. Debounced atomic writes live in
-[messaging/session/persistence.py](src/free_claude_code/messaging/session/persistence.py). One writer
+shares mutable persisted state. Debounced atomic writes live in the shared
+[core/json_persistence.py](src/free_claude_code/core/json_persistence.py), reused by the
+admin Usage tab's counters (`core/usage_stats.py`). One writer
 lock serializes physical replaces, and a generation check under that lock
 prevents an older timer snapshot from landing after a newer flush or clear.
 Timer-triggered saves are best effort and leave the store dirty on failure;

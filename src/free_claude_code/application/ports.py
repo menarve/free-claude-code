@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from free_claude_code.config.settings import Settings
 from free_claude_code.core.anthropic import MessagesRequest
@@ -78,3 +78,15 @@ class TaskController(Protocol):
     """Stop managed work without exposing messaging or CLI resources."""
 
     async def stop_all(self) -> StopResult | None: ...
+
+
+class UsageStatsPort(Protocol):
+    """Per-model request/token/error counters shown in the admin Usage tab."""
+
+    def record_success(
+        self, provider_id: str, provider_model: str, *, input_tokens: int
+    ) -> None: ...
+
+    def record_error(self, provider_id: str, provider_model: str) -> None: ...
+
+    def snapshot(self) -> dict[str, Any]: ...

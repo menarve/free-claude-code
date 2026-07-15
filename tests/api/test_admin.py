@@ -821,3 +821,35 @@ def test_admin_launch_url_uses_loopback_for_wildcard_host():
     settings = Settings.model_construct(host="0.0.0.0", port=8082)
 
     assert local_admin_url(settings) == "http://127.0.0.1:8082/admin"
+
+
+def test_admin_usage_is_loopback_only(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    app = create_test_app()
+
+    assert _local_client(app).get("/admin/api/usage").status_code == 200
+    remote_client = TestClient(app, client=("203.0.113.10", 50000))
+    assert remote_client.get("/admin/api/usage").status_code == 403
+
+
+def test_admin_usage_reports_recorded_model_counters(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    app = create_test_app()
+    app.state.services.usage_stats.record_success(
+        "open_router", "openai/gpt-oss-20b:free", input_tokens=100
+    )
+    app.state.services.usage_stats.record_success(
+        "open_router", "openai/gpt-oss-20b:free", input_tokens=50
+    )
+    app.state.services.usage_stats.record_error(
+        "open_router", "openai/gpt-oss-20b:free"
+    )
+
+    response = _local_client(app).get("/admin/api/usage")
+
+    assert response.status_code == 200
+    model_stats = response.json()["models"]["open_router/openai/gpt-oss-20b:free"]
+    assert model_stats["requests"] == 2
+    assert model_stats["input_tokens"] == 150
+    assert model_stats["errors"] == 1
+    assert model_stats["last_used_at"]

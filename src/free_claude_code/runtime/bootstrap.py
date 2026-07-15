@@ -6,8 +6,9 @@ from pathlib import Path
 from free_claude_code.api.app import create_app
 from free_claude_code.api.ports import ApiServices
 from free_claude_code.config.logging_config import configure_logging
-from free_claude_code.config.paths import server_log_path
+from free_claude_code.config.paths import server_log_path, usage_stats_path
 from free_claude_code.config.settings import Settings
+from free_claude_code.core.usage_stats import UsageStatsTracker
 from free_claude_code.messaging.transcription import TranscriptionService
 from free_claude_code.messaging.voice import Transcriber
 from free_claude_code.providers.nvidia_nim.voice import NvidiaNimTranscriber
@@ -30,10 +31,13 @@ def build_asgi_app(
         transcriber=_create_transcriber(settings),
         restart_callback=restart_callback,
     )
+    usage_stats = UsageStatsTracker(str(usage_stats_path()))
+    usage_stats.load()
     services = ApiServices(
         requests=provider_manager,
         admin=runtime,
         tasks=runtime,
+        usage_stats=usage_stats,
     )
     return RuntimeASGIApp(create_app(services), runtime)
 

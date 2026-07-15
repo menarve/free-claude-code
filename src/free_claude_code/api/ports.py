@@ -4,7 +4,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from free_claude_code.application.ports import RequestRuntimePort, TaskController
+from free_claude_code.application.ports import (
+    RequestRuntimePort,
+    TaskController,
+    UsageStatsPort,
+)
 
 
 class AdminRuntimePort(Protocol):
@@ -30,3 +34,4 @@ class ApiServices:
     requests: RequestRuntimePort
     admin: AdminRuntimePort
     tasks: TaskController
+    usage_stats: UsageStatsPort

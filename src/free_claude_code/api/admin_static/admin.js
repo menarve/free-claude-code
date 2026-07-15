@@ -29,6 +29,13 @@ const VIEW_GROUPS = [
     sections: ["messaging", "voice"],
     containerId: "messagingSections",
   },
+  {
+    id: "usage",
+    label: "Usage",
+    title: "Usage",
+    sections: [],
+    containerId: "usageSections",
+  },
 ];
 
 const byId = (id) => document.getElementById(id);
@@ -83,6 +90,7 @@ async function load() {
   renderNav();
   renderProviders(config.provider_status);
   renderSections(config.sections, config.fields);
+  renderUsage(await api("/admin/api/usage"));
   byId("configPath").textContent = config.paths.managed;
   await validate(false);
   await refreshLocalStatus();
@@ -234,6 +242,67 @@ function renderSections(sections, fields) {
       container.appendChild(sectionEl);
     });
   });
+}
+
+function renderUsage(usage) {
+  const container = byId("usageSections");
+  container.innerHTML = "";
+
+  const section = document.createElement("section");
+  section.className = "settings-section";
+
+  const heading = document.createElement("div");
+  heading.className = "section-heading";
+  heading.innerHTML =
+    "<div><h3>Model usage</h3><p>Requests, input tokens, and errors observed per model since tracking began.</p></div>";
+  section.appendChild(heading);
+
+  const refreshButton = document.createElement("button");
+  refreshButton.type = "button";
+  refreshButton.className = "ghost-button";
+  refreshButton.textContent = "Refresh";
+  refreshButton.addEventListener("click", async () => {
+    renderUsage(await api("/admin/api/usage"));
+  });
+  section.appendChild(refreshButton);
+
+  const models = Object.entries(usage.models || {}).sort(
+    (a, b) => b[1].requests - a[1].requests,
+  );
+
+  if (models.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "field-description";
+    empty.textContent = "No requests recorded yet.";
+    section.appendChild(empty);
+  } else {
+    const table = document.createElement("table");
+    table.className = "usage-table";
+    const thead = document.createElement("thead");
+    thead.innerHTML =
+      "<tr><th>Model</th><th>Requests</th><th>Input tokens</th><th>Errors</th><th>Last used</th></tr>";
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    models.forEach(([modelRef, stats]) => {
+      const row = document.createElement("tr");
+      const lastUsed = stats.last_used_at
+        ? new Date(stats.last_used_at).toLocaleString()
+        : "-";
+      row.innerHTML = `
+        <td>${modelRef}</td>
+        <td>${stats.requests}</td>
+        <td>${stats.input_tokens.toLocaleString()}</td>
+        <td>${stats.errors}</td>
+        <td>${lastUsed}</td>
+      `;
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    section.appendChild(table);
+  }
+
+  container.appendChild(section);
 }
 
 function renderField(field) {

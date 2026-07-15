@@ -177,7 +177,7 @@ class TestSessionStore:
 
         with (
             patch(
-                "free_claude_code.messaging.session.persistence.os.replace",
+                "free_claude_code.core.json_persistence.os.replace",
                 side_effect=OSError("Disk full"),
             ),
             pytest.raises(OSError, match="Disk full"),

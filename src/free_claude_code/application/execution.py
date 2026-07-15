@@ -21,7 +21,7 @@ from free_claude_code.core.trace import (
 )
 
 from .model_fallback import build_fallback_chain
-from .ports import ProviderResolver, RequestRuntimeLease
+from .ports import ProviderResolver, RequestRuntimeLease, UsageStatsPort
 from .routing import ModelRouter, RoutedMessagesRequest
 
 TokenCounter = Callable[
@@ -48,6 +48,7 @@ class ProviderExecutor:
         self._log_raw_payloads = log_raw_payloads
         self._model_router: ModelRouter | None = None
         self._model_cache: RequestRuntimeLease | None = None
+        self._usage_stats: UsageStatsPort | None = None
 
     def stream(
         self,
@@ -59,6 +60,7 @@ class ProviderExecutor:
         request_id: str,
         model_router: ModelRouter | None = None,
         model_cache: RequestRuntimeLease | None = None,
+        usage_stats: UsageStatsPort | None = None,
     ) -> AsyncIterator[str]:
         """Preflight synchronously, then return the traced provider stream."""
         # Per-request fallback wiring (the executor is reused across requests).
@@ -66,6 +68,8 @@ class ProviderExecutor:
             self._model_router = model_router
         if model_cache is not None:
             self._model_cache = model_cache
+        if usage_stats is not None:
+            self._usage_stats = usage_stats
 
         provider = self._provider_resolver(routed.resolved.provider_id)
         provider.preflight_stream(
@@ -160,9 +164,21 @@ class ProviderExecutor:
                     async for chunk in provider_stream:
                         committed = True
                         yield chunk
+                    if self._usage_stats is not None:
+                        self._usage_stats.record_success(
+                            candidate_provider_id,
+                            candidate_provider_model,
+                            input_tokens=input_tokens,
+                        )
                     return
                 except BaseException as exc:
                     last_error = exc
+                    if self._usage_stats is not None and isinstance(exc, Exception):
+                        # Excludes CancelledError/GeneratorExit: a cancelled
+                        # stream isn't evidence the model itself is unreliable.
+                        self._usage_stats.record_error(
+                            candidate_provider_id, candidate_provider_model
+                        )
                     failure = find_execution_failure(exc)
                     non_switchable_failure = failure is not None and not (
                         failure.retryable or failure.model_fallback_eligible

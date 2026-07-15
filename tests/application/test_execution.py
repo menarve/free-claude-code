@@ -246,3 +246,53 @@ async def test_context_length_exceeded_falls_back_to_next_candidate() -> None:
     assert [chunk async for chunk in stream] == ["event: message_stop\ndata: {}\n\n"]
     assert len(primary.stream_calls) == 1
     assert len(fallback.stream_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_successful_stream_records_usage_stats() -> None:
+    provider = FakeProvider()
+    usage_stats = MagicMock()
+    executor = ProviderExecutor(
+        lambda _provider_id: provider,
+        token_counter=lambda _messages, _system, _tools: 17,
+    )
+
+    stream = executor.stream(
+        _routed_request(),
+        wire_api="messages",
+        raw_log_label="FULL_PAYLOAD",
+        raw_log_payload={},
+        request_id="req_usage_success",
+        usage_stats=usage_stats,
+    )
+
+    assert [chunk async for chunk in stream] == ["event: message_stop\ndata: {}\n\n"]
+    usage_stats.record_success.assert_called_once_with(
+        "provider", "provider-model", input_tokens=17
+    )
+    usage_stats.record_error.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_stream_construction_failure_records_usage_error() -> None:
+    provider = FailingStreamConstructionProvider()
+    usage_stats = MagicMock()
+    executor = ProviderExecutor(
+        lambda _provider_id: provider,
+        token_counter=lambda _messages, _system, _tools: 17,
+    )
+
+    stream = executor.stream(
+        _routed_request(),
+        wire_api="messages",
+        raw_log_label="FULL_PAYLOAD",
+        raw_log_payload={},
+        request_id="req_usage_error",
+        usage_stats=usage_stats,
+    )
+
+    with pytest.raises(RuntimeError, match="stream construction failed"):
+        await anext(stream)
+
+    usage_stats.record_error.assert_called_once_with("provider", "provider-model")
+    usage_stats.record_success.assert_not_called()
