@@ -1106,3 +1106,26 @@ class TestPerModelMapping:
         assert refs[2].provider_id == "open_router"
         assert refs[2].model_id == "anthropic/claude-opus"
         assert refs[2].sources == ("MODEL_OPUS",)
+
+    def test_derivation_sentinel_is_accepted_and_excluded_from_refs(self):
+        """The derivation sentinel is a valid role value but not a real model."""
+        from free_claude_code.config.settings import Settings
+
+        s = Settings()
+        s.model = "menarve/derivation"
+        s.model_fable = None
+        s.model_opus = "gemini/gemini-3.1-flash-lite"
+        s.model_sonnet = "menarve/derivation"
+        s.model_haiku = None
+
+        refs = configured_chat_model_refs(s)
+
+        # The sentinel never appears as a configured provider/model ref.
+        assert [ref.model_ref for ref in refs] == ["gemini/gemini-3.1-flash-lite"]
+
+    def test_settings_validator_accepts_derivation_sentinel(self, monkeypatch):
+        from free_claude_code.config.settings import Settings
+
+        monkeypatch.setenv("MODEL", "menarve/derivation")
+
+        assert Settings().model == "menarve/derivation"

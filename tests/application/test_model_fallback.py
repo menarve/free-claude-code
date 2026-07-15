@@ -136,3 +136,27 @@ def test_rank_potency_orders_known_families_above_unknown():
     assert rank_potency("open_router/anthropic/claude-sonnet-4-5") > rank_potency(
         "open_router/openai/gpt-oss-20b:free"
     )
+
+
+def test_rank_potency_orders_pro_above_flash_above_flash_lite():
+    pro = rank_potency("gemini/gemini-3.1-pro-preview")
+    flash = rank_potency("gemini/gemini-3.5-flash")
+    flash_lite = rank_potency("gemini/gemini-3.1-flash-lite")
+
+    assert pro > flash > flash_lite
+
+
+def test_rank_potency_does_not_mistake_gemini_for_mini():
+    # "gemini" contains "mini" as a substring but must not read as a small model.
+    assert rank_potency("gemini/gemini-2.5-pro") > rank_potency(
+        "gemini/gemini-2.5-flash"
+    )
+
+
+def test_rank_potency_breaks_ties_by_version_then_params():
+    assert rank_potency("gemini/gemini-3.5-flash") > rank_potency(
+        "gemini/gemini-2.0-flash"
+    )
+    assert rank_potency("open_router/nvidia/nemotron-3-ultra-550b:free") > rank_potency(
+        "open_router/nvidia/nemotron-3-super-120b:free"
+    )

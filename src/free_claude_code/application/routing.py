@@ -5,7 +5,12 @@ from dataclasses import dataclass
 from loguru import logger
 
 from free_claude_code.application.errors import UnknownProviderError
-from free_claude_code.config.model_refs import parse_model_name, parse_provider_type
+from free_claude_code.config.model_refs import (
+    DERIVATION_MODEL_REF,
+    is_derivation_ref,
+    parse_model_name,
+    parse_provider_type,
+)
 from free_claude_code.config.provider_catalog import (
     PROVIDER_CATALOG,
     SUPPORTED_PROVIDER_IDS,
@@ -22,6 +27,9 @@ class ResolvedModel:
     provider_model: str
     provider_model_ref: str
     thinking_enabled: bool
+    # When true, no fixed model was chosen: execution runs the full derivation
+    # chain (every accessible model, strongest first) instead of a primary.
+    derivation: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +79,18 @@ class ModelRouter:
 
         provider_model_ref = self._resolve_model_ref(claude_model_name)
         thinking_enabled = self._resolve_thinking(claude_model_name)
+        if is_derivation_ref(provider_model_ref):
+            logger.debug(
+                "MODEL DERIVATION: '{}' -> derivation chain", claude_model_name
+            )
+            return ResolvedModel(
+                original_model=claude_model_name,
+                provider_id=parse_provider_type(DERIVATION_MODEL_REF),
+                provider_model=parse_model_name(DERIVATION_MODEL_REF),
+                provider_model_ref=DERIVATION_MODEL_REF,
+                thinking_enabled=thinking_enabled,
+                derivation=True,
+            )
         provider_id = parse_provider_type(provider_model_ref)
         self._validate_provider_id(provider_id)
         provider_model = parse_model_name(provider_model_ref)

@@ -3,6 +3,19 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+# Sentinel a model role can point to instead of a concrete provider/model. It
+# means "don't pin a model - run the derivation chain, trying every accessible
+# model strongest-first until one responds". It is not a real provider/model,
+# so it is excluded from configured-model validation and discovery.
+DERIVATION_MODEL_REF = "menarve/derivation"
+DERIVATION_DISPLAY_NAME = "Derivación Menarve"
+
+
+def is_derivation_ref(model_ref: str | None) -> bool:
+    """Return whether a configured role points at the derivation chain."""
+
+    return model_ref == DERIVATION_MODEL_REF
+
 
 @dataclass(frozen=True, slots=True)
 class ConfiguredChatModelRef:
@@ -48,7 +61,10 @@ def configured_chat_model_refs(
     )
     sources_by_ref: dict[str, list[str]] = {}
     for source, model_ref in candidates:
-        if model_ref is None:
+        # The derivation sentinel is not a concrete provider/model; excluding it
+        # here keeps validation, discovery, and the model catalog from treating
+        # "menarve" as a real provider.
+        if model_ref is None or is_derivation_ref(model_ref):
             continue
         sources_by_ref.setdefault(model_ref, []).append(source)
 

@@ -12,91 +12,65 @@ NOTE: this module patches the editable Free Claude Code install at
 updated; re-apply after any upgrade.
 """
 
+import re
 from collections.abc import Iterable
 
 from loguru import logger
 
 from free_claude_code.application.model_metadata import ProviderModelInfo
 
-# Heuristic potency tiers by model-family keyword (descending). Unknown models
-# score mid (50). Adjust as new families appear. ProviderModelInfo exposes no
-# capability/intelligence metadata, so ordering is necessarily name-based.
-_POTENCY_TIERS: tuple[tuple[int, tuple[str, ...]], ...] = (
-    (
-        95,
-        (
-            "opus",
-            "claude-opus",
-            "gpt-5",
-            "gpt5",
-            "o3",
-            "o1",
-            "deepseek-r1",
-            "llama-4",
-            "qwen-max",
-            "qwen3-max",
-            "gemini-2.5-pro",
-            "gemini-3-pro",
-            "grok-3",
-        ),
-    ),
-    (
-        80,
-        (
-            "sonnet",
-            "gpt-4.1",
-            "gpt-4o",
-            "gpt-4",
-            "deepseek-v3",
-            "deepseek-chat",
-            "gemini-2.5-flash",
-            "gemini-3-flash",
-            "gemini-3.1-flash",
-            "qwen-plus",
-            "qwen3-235b",
-            "llama-3.3",
-            "mistral-large",
-            "command-r-plus",
-            "grok-4",
-            "grok-2",
-        ),
-    ),
-    (
-        60,
-        (
-            "haiku",
-            "gpt-oss",
-            "gpt-4o-mini",
-            "mini",
-            "deepseek-coder",
-            "qwen-coder",
-            "qwen2.5",
-            "qwen3-32b",
-            "llama-3.2",
-            "llama-3.1",
-            "mistral",
-            "codestral",
-            "gemma",
-            "phi-4",
-            "command-r",
-        ),
-    ),
-    (
-        35,
-        (
-            "nano",
-            "small",
-            "tiny",
-            "0.5b",
-            "1b",
-            "1.5b",
-            "3b",
-            "7b",
-            "8b",
-            "instruct",
-        ),
-    ),
+# Potency is name-based only: ProviderModelInfo carries no capability metadata.
+# A model's size CLASS dominates the score; version and parameter count only
+# break ties within a class. Markers are matched against whole letter-tokens
+# (not substrings) so "flash-lite" reads as small and "gemini" is never
+# mistaken for "mini".
+_SMALL_TOKENS = frozenset(
+    {
+        "lite",
+        "mini",
+        "nano",
+        "micro",
+        "tiny",
+        "small",
+        "haiku",
+        "xs",
+        "gemma",
+        "phi",
+        "oss",
+    }
 )
+_LARGE_TOKENS = frozenset({"opus", "ultra", "max", "pro", "large", "nemotron"})
+_MEDIUM_TOKENS = frozenset(
+    {"flash", "sonnet", "plus", "medium", "coder", "command", "mistral"}
+)
+
+_CLASS_SMALL = 1
+_CLASS_MEDIUM = 2
+_CLASS_LARGE = 3
+
+_WORD_RE = re.compile(r"[a-z]+")
+# Explicit parameter count in the name, e.g. "550b", "120b", "8b".
+_SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*b(?![a-z0-9])")
+# Family version, e.g. gemini-3.1, gpt-5, claude-opus-4.8, qwen3.
+_VERSION_RE = re.compile(
+    r"(?:gpt-|gemini-|claude-[a-z]+-|grok-|llama-|qwen-?|deepseek-|"
+    r"mistral-|hy|nemotron-|command-r-?|-v|/v)(\d+(?:\.\d+)?)"
+)
+
+
+def _size_class(ref: str, params: float) -> int:
+    """Coarse capability class from name tokens and any explicit param count."""
+    words = set(_WORD_RE.findall(ref))
+    if words & _SMALL_TOKENS:
+        return _CLASS_SMALL
+    if params >= 100 or (words & _LARGE_TOKENS):
+        return _CLASS_LARGE
+    if params and params <= 9:
+        return _CLASS_SMALL
+    if words & _MEDIUM_TOKENS:
+        return _CLASS_MEDIUM
+    return _CLASS_MEDIUM
+
 
 # Model kinds that are NOT chat-completion models; exclude from the chain.
 _NON_CHAT_MARKERS = (
@@ -145,13 +119,21 @@ def is_free_candidate(model_ref: str) -> bool:
 
 
 def rank_potency(model_ref: str) -> int:
-    """Heuristic potency score for ordering fallback candidates (higher = stronger)."""
+    """Heuristic score for ordering candidates strongest -> weakest.
+
+    Size class dominates (large > medium > small); the family version number
+    and any explicit parameter count only break ties within a class. Name-based
+    only, since ProviderModelInfo carries no capability metadata.
+    """
 
     ref = model_ref.lower()
-    for score, keywords in _POTENCY_TIERS:
-        if any(keyword in ref for keyword in keywords):
-            return score
-    return 50
+    sizes = [float(match) for match in _SIZE_RE.findall(ref)]
+    params = max(sizes) if sizes else 0.0
+    size_class = _size_class(ref, params)
+    version_match = _VERSION_RE.search(ref)
+    version = float(version_match.group(1)) if version_match else 0.0
+    # Class dominates; version then parameter count break within-class ties.
+    return int(size_class * 10000 + min(version, 99) * 100 + min(params, 999))
 
 
 def eligible_candidate_refs(

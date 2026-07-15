@@ -12,6 +12,7 @@ from .env_files import (
     env_file_override,
     settings_env_files,
 )
+from .model_refs import is_derivation_ref
 from .nim import NimSettings
 from .provider_catalog import SUPPORTED_PROVIDER_IDS
 
@@ -370,6 +371,8 @@ class Settings(BaseSettings):
     def validate_model_format(cls, v: str | None) -> str | None:
         if v is None:
             return None
+        if is_derivation_ref(v):
+            return v
         if "/" not in v:
             raise ValueError(
                 f"Model must be prefixed with provider type. "

@@ -296,3 +296,91 @@ async def test_stream_construction_failure_records_usage_error() -> None:
 
     usage_stats.record_error.assert_called_once_with("provider", "provider-model")
     usage_stats.record_success.assert_not_called()
+
+
+def _derivation_routed_request() -> RoutedMessagesRequest:
+    request = MessagesRequest(
+        model="menarve/derivation",
+        messages=[Message(role="user", content="hello")],
+    )
+    return RoutedMessagesRequest(
+        request=request,
+        resolved=ResolvedModel(
+            original_model="claude-opus",
+            provider_id="menarve",
+            provider_model="derivation",
+            provider_model_ref="menarve/derivation",
+            thinking_enabled=True,
+            derivation=True,
+        ),
+    )
+
+
+def _resolve_ref(ref: str) -> ResolvedModel:
+    provider_id, model_id = ref.split("/", 1)
+    return ResolvedModel(
+        original_model="claude-opus",
+        provider_id=provider_id,
+        provider_model=model_id,
+        provider_model_ref=ref,
+        thinking_enabled=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_derivation_mode_tries_strongest_candidate_first() -> None:
+    strong = FakeProvider()
+    weak = FakeProvider()
+    providers = {"gemini": strong, "open_router": weak}
+    executor = ProviderExecutor(
+        lambda provider_id: providers[provider_id],
+        token_counter=lambda _messages, _system, _tools: 5,
+    )
+    model_cache = MagicMock()
+    model_cache.cached_prefixed_model_infos.return_value = (
+        ProviderModelInfo("open_router/small-model:free"),
+        ProviderModelInfo("gemini/gemini-3.1-pro"),
+    )
+    model_router = MagicMock()
+    model_router.resolve.side_effect = _resolve_ref
+
+    stream = executor.stream(
+        _derivation_routed_request(),
+        wire_api="messages",
+        raw_log_label="FULL_PAYLOAD",
+        raw_log_payload={},
+        request_id="req_derivation",
+        model_router=model_router,
+        model_cache=model_cache,
+    )
+
+    assert [chunk async for chunk in stream] == ["event: message_stop\ndata: {}\n\n"]
+    # gemini-3.1-pro (large) outranks the small OpenRouter model, so it is tried
+    # first, succeeds, and the weaker candidate is never reached.
+    assert len(strong.stream_calls) == 1
+    assert len(weak.stream_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_derivation_mode_without_candidates_raises_unavailable() -> None:
+    executor = ProviderExecutor(
+        lambda _provider_id: FakeProvider(),
+        token_counter=lambda _messages, _system, _tools: 5,
+    )
+    model_cache = MagicMock()
+    model_cache.cached_prefixed_model_infos.return_value = ()
+    model_router = MagicMock()
+
+    stream = executor.stream(
+        _derivation_routed_request(),
+        wire_api="messages",
+        raw_log_label="FULL_PAYLOAD",
+        raw_log_payload={},
+        request_id="req_derivation_empty",
+        model_router=model_router,
+        model_cache=model_cache,
+    )
+
+    with pytest.raises(ExecutionFailure) as exc_info:
+        await anext(stream)
+    assert exc_info.value.status_code == 503

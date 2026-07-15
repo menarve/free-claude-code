@@ -13,14 +13,18 @@ from free_claude_code.core.anthropic import (
     anthropic_request_snapshot,
     get_token_count,
 )
-from free_claude_code.core.failures import find_execution_failure
+from free_claude_code.core.failures import (
+    ExecutionFailure,
+    FailureKind,
+    find_execution_failure,
+)
 from free_claude_code.core.trace import (
     close_stream_input,
     trace_event,
     traced_async_stream,
 )
 
-from .model_fallback import build_fallback_chain
+from .model_fallback import build_fallback_chain, eligible_candidate_refs
 from .ports import ProviderResolver, RequestRuntimeLease, UsageStatsPort
 from .routing import ModelRouter, RoutedMessagesRequest
 
@@ -71,11 +75,15 @@ class ProviderExecutor:
         if usage_stats is not None:
             self._usage_stats = usage_stats
 
-        provider = self._provider_resolver(routed.resolved.provider_id)
-        provider.preflight_stream(
-            routed.request,
-            thinking_enabled=routed.resolved.thinking_enabled,
-        )
+        # Derivation mode pins no primary model, so there is nothing to preflight
+        # up front - every candidate is resolved and preflighted inside the loop.
+        provider = None
+        if not routed.resolved.derivation:
+            provider = self._provider_resolver(routed.resolved.provider_id)
+            provider.preflight_stream(
+                routed.request,
+                thinking_enabled=routed.resolved.thinking_enabled,
+            )
 
         route_trace: dict[str, object] = {
             "stage": "routing",
@@ -116,13 +124,28 @@ class ProviderExecutor:
             routed.request.tools,
         )
 
+        derivation = routed.resolved.derivation
+
         async def provider_body() -> AsyncIterator[str]:
             chain = self._fallback_chain(routed)
+            if derivation and not chain:
+                raise ExecutionFailure(
+                    kind=FailureKind.UNAVAILABLE,
+                    status_code=503,
+                    message=(
+                        "No accessible models available for derivation. "
+                        "Configure at least one provider API key."
+                    ),
+                    retryable=True,
+                )
             last_error: BaseException | None = None
             for index, candidate_ref in enumerate(chain):
-                # index 0 keeps the already-resolved default model exactly;
-                # later candidates are re-resolved from their provider/model ref.
-                if index == 0:
+                # In derivation mode there is no pinned primary, so every
+                # candidate is resolved here; otherwise index 0 reuses the
+                # already-resolved and preflighted default model exactly.
+                if index == 0 and not derivation:
+                    # `provider` is only None in derivation mode, excluded here.
+                    assert provider is not None
                     candidate_request = routed.request
                     candidate_provider_id = routed.resolved.provider_id
                     candidate_provider_model = routed.resolved.provider_model
@@ -243,18 +266,22 @@ class ProviderExecutor:
     def _fallback_chain(self, routed: RoutedMessagesRequest) -> list[str]:
         """Ordered ``provider/model`` refs to try for this request's model.
 
-        Applies to any resolved model (default, opus/sonnet/haiku role, or a
-        direct ``provider/model`` request) whenever the model cache is
-        available; otherwise the single already-resolved model.
+        In derivation mode the role pins no model, so the chain is every
+        accessible candidate strongest-first. Otherwise the resolved model
+        leads, followed by the discovered candidates when the cache is
+        available; without a cache, just the single resolved model.
         """
 
+        derivation = routed.resolved.derivation
         if self._model_router is None or self._model_cache is None:
-            return [routed.resolved.provider_model_ref]
+            return [] if derivation else [routed.resolved.provider_model_ref]
         try:
             model_infos = self._model_cache.cached_prefixed_model_infos()
         except Exception as exc:
             logger.warning("MODEL FALLBACK: model cache unavailable: {}", exc)
-            return [routed.resolved.provider_model_ref]
+            return [] if derivation else [routed.resolved.provider_model_ref]
+        if derivation:
+            return eligible_candidate_refs(model_infos)
         chain = build_fallback_chain(routed.resolved.provider_model_ref, model_infos)
         if not chain:
             return [routed.resolved.provider_model_ref]

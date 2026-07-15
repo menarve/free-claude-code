@@ -253,3 +253,25 @@ def test_model_router_preserves_typed_error_for_unknown_mapped_provider(settings
     assert str(exc_info.value) == (
         f"Unknown provider_type: 'unknown'. Supported: '{supported}'"
     )
+
+
+def test_model_router_derivation_sentinel_marks_derivation(settings):
+    settings.model = "menarve/derivation"
+
+    resolved = ModelRouter(settings).resolve("claude-3-opus")
+
+    assert resolved.derivation is True
+    assert resolved.provider_model_ref == "menarve/derivation"
+    assert resolved.thinking_enabled is True
+
+
+def test_model_router_derivation_applies_per_role(settings):
+    settings.model = "nvidia_nim/fallback-model"
+    settings.model_opus = "menarve/derivation"
+
+    opus = ModelRouter(settings).resolve("claude-3-opus")
+    default = ModelRouter(settings).resolve("claude-3-5-haiku")
+
+    assert opus.derivation is True
+    assert default.derivation is False
+    assert default.provider_id == "nvidia_nim"

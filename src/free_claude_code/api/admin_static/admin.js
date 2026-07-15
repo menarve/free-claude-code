@@ -8,6 +8,10 @@ const state = {
 };
 
 const MASKED_SECRET = "********";
+// A model role may point at the derivation chain instead of a fixed model.
+// The env stores the sentinel ref; the UI shows a friendly name.
+const DERIVATION_MODEL_REF = "menarve/derivation";
+const DERIVATION_DISPLAY_NAME = "Derivación Menarve";
 const VIEW_GROUPS = [
   {
     id: "providers",
@@ -91,6 +95,7 @@ async function load() {
   renderNav();
   renderProviders(config.provider_status);
   renderSections(config.sections, config.fields);
+  syncModelDatalist();
   renderUsage(await api("/admin/api/usage"));
   byId("configPath").textContent = config.paths.managed;
   await validate(false);
@@ -431,6 +436,8 @@ function inputForField(field) {
       : "Not configured";
     input.value = "";
     input.autocomplete = "off";
+  } else if (field.key.startsWith("MODEL") && field.value === DERIVATION_MODEL_REF) {
+    input.value = DERIVATION_DISPLAY_NAME;
   } else {
     input.value = field.value || "";
   }
@@ -452,6 +459,7 @@ function readFieldValue(input) {
   if (input.dataset.secret === "true" && input.dataset.configured === "true") {
     return input.value ? input.value : MASKED_SECRET;
   }
+  if (input.value === DERIVATION_DISPLAY_NAME) return DERIVATION_MODEL_REF;
   return input.value;
 }
 
@@ -572,6 +580,7 @@ function syncModelDatalist() {
     document.body.appendChild(datalist);
   }
   datalist.innerHTML = "";
+  datalist.appendChild(option(DERIVATION_DISPLAY_NAME, DERIVATION_DISPLAY_NAME));
   state.modelOptions.forEach((model) => datalist.appendChild(option(model, model)));
 }
 
