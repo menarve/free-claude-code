@@ -128,6 +128,22 @@ def is_chat_model(model_ref: str) -> bool:
     return not any(marker in ref for marker in _NON_CHAT_MARKERS)
 
 
+def is_free_candidate(model_ref: str) -> bool:
+    """Return whether a ref is safe to try automatically without user consent.
+
+    OpenRouter's catalog (the source of ``model_infos``) mixes free and paid
+    frontier models with no price field - ``:free`` in the id is the only
+    signal - so an unfiltered chain could silently spend real money on a paid
+    model the user never configured. Other providers here are single-tier
+    (free or bring-your-own-key at whatever rate the user already accepted),
+    so only OpenRouter needs this extra check.
+    """
+
+    if not model_ref.startswith("open_router/"):
+        return True
+    return model_ref.endswith(":free")
+
+
 def rank_potency(model_ref: str) -> int:
     """Heuristic potency score for ordering fallback candidates (higher = stronger)."""
 
@@ -148,7 +164,9 @@ def build_fallback_chain(
     default, opus/sonnet/haiku role, or a direct ``provider/model`` request) is
     always first; remaining discovered chat models (those reachable with
     configured API keys) follow in descending heuristic potency. Non-chat
-    models are excluded.
+    models and paid OpenRouter models are excluded - this is an automatic
+    substitution the user never explicitly requested, so it must never reach
+    a model that could cost money.
     """
 
     seen: set[str] = {primary_ref}
@@ -158,6 +176,8 @@ def build_fallback_chain(
         if ref in seen:
             continue
         if not is_chat_model(ref):
+            continue
+        if not is_free_candidate(ref):
             continue
         seen.add(ref)
         rest.append(ref)
