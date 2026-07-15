@@ -96,6 +96,12 @@ _NON_CHAT_MARKERS = (
     "voxtral",
     "lyria",
     "veo",
+    # Agent/specialized Gemini models that only serve the Interactions API,
+    # not chat completions - unusable as derivation candidates.
+    "antigravity",
+    "deep-research",
+    "computer-use",
+    "robotics",
 )
 
 

@@ -39,6 +39,17 @@ _CONTEXT_LENGTH_MARKERS = frozenset(
         "too many tokens",
     }
 )
+# 400s that mean "this model can't serve this request, but another could" -
+# safe to fall back to the next candidate instead of failing the request.
+_INCOMPATIBLE_MODEL_MARKERS = frozenset(
+    {
+        "interactions api",
+        "not supported",
+        "does not support",
+        "unsupported",
+        "only supports",
+    }
+)
 _AUTHENTICATION_MESSAGE = "Provider authentication failed. Check API key."
 _RATE_LIMIT_MESSAGE = "Provider rate limit reached. Please retry shortly."
 _INVALID_REQUEST_MESSAGE = "Invalid request sent to provider."
@@ -240,7 +251,7 @@ def _classify_provider_failure(
             400,
             _INVALID_REQUEST_MESSAGE,
             False,
-            model_fallback_eligible=_is_context_length_exceeded(exc),
+            model_fallback_eligible=_is_model_switchable_bad_request(exc),
         )
     if isinstance(exc, openai.APITimeoutError):
         return _failure(FailureKind.TIMEOUT, 500, _stable_upstream(500), True)
@@ -290,7 +301,7 @@ def _classify_provider_failure(
                 400,
                 _INVALID_REQUEST_MESSAGE,
                 False,
-                model_fallback_eligible=_is_context_length_exceeded(exc),
+                model_fallback_eligible=_is_model_switchable_bad_request(exc),
             )
         if status in (502, 503, 504):
             return overloaded_provider_failure()
@@ -331,9 +342,18 @@ def _failure(
     )
 
 
-def _is_context_length_exceeded(exc: BaseException) -> bool:
-    """Return whether a 400 reports the prompt exceeding the model's context window."""
-    return _has_marker(transient_error_text(exc), _CONTEXT_LENGTH_MARKERS)
+def _is_model_switchable_bad_request(exc: BaseException) -> bool:
+    """Return whether a 400 would succeed on a different model (fallback-worthy).
+
+    Covers prompts too large for this model's context window and models that
+    simply can't serve chat completions (e.g. agent-only "Interactions API"
+    models). A different candidate can still succeed, so the derivation chain
+    should move on rather than fail the request.
+    """
+    text = transient_error_text(exc)
+    return _has_marker(text, _CONTEXT_LENGTH_MARKERS) or _has_marker(
+        text, _INCOMPATIBLE_MODEL_MARKERS
+    )
 
 
 def _stable_upstream(status_code: int) -> str:

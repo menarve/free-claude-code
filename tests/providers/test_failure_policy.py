@@ -112,6 +112,30 @@ _CASES = (
         model_fallback_eligible=True,
     ),
     _ClassificationCase(
+        "openai_bad_request_incompatible_model_is_model_fallback_eligible",
+        lambda: _openai_status_error(
+            openai.BadRequestError,
+            status_code=400,
+            message="This model only supports Interactions API.",
+        ),
+        FailureKind.INVALID_REQUEST,
+        400,
+        False,
+        model_fallback_eligible=True,
+    ),
+    _ClassificationCase(
+        "openai_bad_request_malformed_is_not_model_fallback_eligible",
+        lambda: _openai_status_error(
+            openai.BadRequestError,
+            status_code=400,
+            message="Invalid value for 'tools': expected an array.",
+        ),
+        FailureKind.INVALID_REQUEST,
+        400,
+        False,
+        model_fallback_eligible=False,
+    ),
+    _ClassificationCase(
         "openai_overload_marker",
         lambda: _openai_status_error(
             openai.InternalServerError,
