@@ -58,16 +58,19 @@ class ProviderRateLimiter:
         self._proactive_limiter = StrictSlidingWindowLimiter(
             self._rate_limit, self._rate_window
         )
-        self._blocked_until: float = 0
+        # Reactive 429/5xx blocks are keyed per model id: a rate limit hit on one
+        # model must not block the provider's other models, which have their own
+        # upstream quotas. "" is the shared key for callers without a model.
+        self._blocked_until_by_model: dict[str, float] = {}
         self._concurrency_sem = asyncio.Semaphore(max_concurrency)
         logger.info(
             "ProviderRateLimiter initialized "
             f"({rate_limit} req / {rate_window}s, max_concurrency={max_concurrency})"
         )
 
-    async def wait_if_blocked(self) -> bool:
+    async def wait_if_blocked(self, model: str | None = None) -> bool:
         """
-        Wait if currently rate limited or throttle to meet quota.
+        Wait if the given model is rate limited or throttle to meet quota.
 
         Returns:
             True if was reactively blocked and waited, False otherwise.
@@ -78,45 +81,53 @@ class ProviderRateLimiter:
         waited_reactively = False
         while True:
             waited_reactively = (
-                await self._wait_for_reactive_block() or waited_reactively
+                await self._wait_for_reactive_block(model) or waited_reactively
             )
-            if await self._proactive_limiter.acquire_if(lambda: not self.is_blocked()):
+            if await self._proactive_limiter.acquire_if(
+                lambda: not self.is_blocked(model)
+            ):
                 return waited_reactively
 
-    async def _wait_for_reactive_block(self) -> bool:
+    async def _wait_for_reactive_block(self, model: str | None = None) -> bool:
         waited = False
-        while (wait_time := self.remaining_wait()) > 0:
+        while (wait_time := self.remaining_wait(model)) > 0:
             logger.warning(
-                "Provider rate limit active (reactive), waiting {:.1f}s...",
+                "Provider rate limit active (reactive) for model={}, waiting {:.1f}s...",
+                model or "-",
                 wait_time,
             )
             await asyncio.sleep(wait_time)
             waited = True
         return waited
 
-    def extend_reactive_block(self, seconds: float) -> None:
+    def extend_reactive_block(self, seconds: float, model: str | None = None) -> None:
         """
-        Extend this provider's reactive block by at least ``seconds`` from now.
+        Extend the reactive block for ``model`` by at least ``seconds`` from now.
 
         Args:
             seconds: Positive minimum duration for the resulting block.
+            model: Model id whose upstream quota was hit; blocks only that model.
         """
         if seconds <= 0:
             raise ValueError("reactive block duration must be > 0")
         now = time.monotonic()
-        self._blocked_until = max(self._blocked_until, now + seconds)
+        key = model or ""
+        blocked_until = max(self._blocked_until_by_model.get(key, 0.0), now + seconds)
+        self._blocked_until_by_model[key] = blocked_until
         logger.warning(
-            "Provider rate limit set for {:.1f}s (reactive)",
-            max(0.0, self._blocked_until - now),
+            "Provider rate limit set for {:.1f}s (reactive) model={}",
+            max(0.0, blocked_until - now),
+            model or "-",
         )
 
-    def is_blocked(self) -> bool:
-        """Check if currently reactively blocked."""
-        return time.monotonic() < self._blocked_until
+    def is_blocked(self, model: str | None = None) -> bool:
+        """Check if the given model is currently reactively blocked."""
+        return self.remaining_wait(model) > 0
 
-    def remaining_wait(self) -> float:
-        """Get remaining reactive wait time in seconds."""
-        return max(0.0, self._blocked_until - time.monotonic())
+    def remaining_wait(self, model: str | None = None) -> float:
+        """Get remaining reactive wait time in seconds for the given model."""
+        blocked_until = self._blocked_until_by_model.get(model or "", 0.0)
+        return max(0.0, blocked_until - time.monotonic())
 
     @asynccontextmanager
     async def concurrency_slot(self) -> AsyncIterator[None]:
@@ -166,9 +177,13 @@ class ProviderRateLimiter:
         """
         last_exc: Exception | None = None
         total_attempts = 1 + max_retries
+        # The upstream body carries the model id, so per-model reactive blocking
+        # needs no extra plumbing through the provider call sites.
+        model = kwargs.get("model")
+        model_id = model if isinstance(model, str) else None
 
         for attempt in range(total_attempts):
-            await self.wait_if_blocked()
+            await self.wait_if_blocked(model_id)
 
             try:
                 return await fn(*args, **kwargs)
@@ -226,7 +241,7 @@ class ProviderRateLimiter:
                     delay_s=round(delay, 3),
                 )
                 if status is not None:
-                    self.extend_reactive_block(delay)
+                    self.extend_reactive_block(delay, model_id)
                 await asyncio.sleep(delay)
 
         assert last_exc is not None

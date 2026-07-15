@@ -161,7 +161,7 @@ class TestProviderRateLimiter:
             proactive_reservations += 1
             return True
 
-        async def wait_reactively() -> bool:
+        async def wait_reactively(_model=None) -> bool:
             nonlocal reactive_checks
             reactive_checks += 1
             return reactive_checks == 2
@@ -279,6 +279,17 @@ class TestProviderRateLimiter:
 
         with pytest.raises(ValueError, match="reactive block duration must be > 0"):
             limiter.extend_reactive_block(seconds)
+
+    def test_reactive_block_is_per_model_not_provider_wide(self) -> None:
+        """A 429 on one model must not block the provider's other models."""
+        limiter = ProviderRateLimiter(rate_limit=100, rate_window=60)
+
+        limiter.extend_reactive_block(60.0, "gemini-3.1-pro")
+
+        assert limiter.is_blocked("gemini-3.1-pro") is True
+        # Another model of the same provider keeps its own (clear) quota.
+        assert limiter.is_blocked("gemini-3.1-flash-lite") is False
+        assert limiter.remaining_wait("gemini-3.1-flash-lite") == 0
 
     @pytest.mark.asyncio
     async def test_remaining_wait_when_not_blocked(self):

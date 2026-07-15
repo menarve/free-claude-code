@@ -504,8 +504,10 @@ class _OpenAIChatStreamRunner:
                         provider_name=tag,
                         read_timeout_s=self._provider._config.http_read_timeout,
                         request_id=self._request_id,
-                        mark_rate_limited=(
-                            self._provider._rate_limiter.extend_reactive_block
+                        mark_rate_limited=lambda seconds: (
+                            self._provider._rate_limiter.extend_reactive_block(
+                                seconds, self._request.model
+                            )
                         ),
                         provider_failure_override=(
                             self._provider._provider_failure_override
