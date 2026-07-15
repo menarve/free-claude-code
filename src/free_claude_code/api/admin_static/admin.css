@@ -550,6 +550,26 @@ textarea:focus-visible,
   margin-top: 2px;
 }
 
+/* Usage stats controls */
+.usage-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.usage-sort-label {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 8px;
+}
+
+.usage-sort-button.active {
+  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-muted);
+}
+
 /* Usage stats table */
 .usage-table {
   width: 100%;

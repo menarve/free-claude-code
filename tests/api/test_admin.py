@@ -103,6 +103,21 @@ def test_admin_static_hides_managed_source_label():
     assert "sourceEl.textContent = source" in script
 
 
+def test_admin_static_usage_tab_only_lists_configured_model_roles():
+    script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert '["MODEL", "Default"]' in script
+    assert '["MODEL_FABLE", "Fable"]' in script
+    assert '["MODEL_OPUS", "Opus"]' in script
+    assert '["MODEL_SONNET", "Sonnet"]' in script
+    assert '["MODEL_HAIKU", "Haiku"]' in script
+    assert "function configuredModelRoles()" in script
+    assert '["list", "Model list order"]' in script
+    assert '["usage", "Most used"]' in script
+
+
 def test_admin_config_masks_secrets_and_exposes_manifest(monkeypatch, tmp_path):
     _set_home(monkeypatch, tmp_path)
     _clear_process_config(monkeypatch)

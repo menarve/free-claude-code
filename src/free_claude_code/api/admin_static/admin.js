@@ -4,9 +4,17 @@ const state = {
   localStatus: new Map(),
   modelOptions: [],
   activeView: "providers",
+  usageSort: "list",
 };
 
 const MASKED_SECRET = "********";
+const MODEL_ROLE_FIELDS = [
+  ["MODEL", "Default"],
+  ["MODEL_FABLE", "Fable"],
+  ["MODEL_OPUS", "Opus"],
+  ["MODEL_SONNET", "Sonnet"],
+  ["MODEL_HAIKU", "Haiku"],
+];
 const VIEW_GROUPS = [
   {
     id: "providers",
@@ -244,6 +252,22 @@ function renderSections(sections, fields) {
   });
 }
 
+function configuredModelRoles() {
+  const roleLabelsByRef = new Map();
+  const listOrderByRef = new Map();
+  MODEL_ROLE_FIELDS.forEach(([key, label], index) => {
+    const field = state.fields.get(key);
+    const ref = field && field.value ? field.value.trim() : "";
+    if (!ref) return;
+    if (!roleLabelsByRef.has(ref)) {
+      roleLabelsByRef.set(ref, []);
+      listOrderByRef.set(ref, index);
+    }
+    roleLabelsByRef.get(ref).push(label);
+  });
+  return { roleLabelsByRef, listOrderByRef };
+}
+
 function renderUsage(usage) {
   const container = byId("usageSections");
   container.innerHTML = "";
@@ -254,8 +278,11 @@ function renderUsage(usage) {
   const heading = document.createElement("div");
   heading.className = "section-heading";
   heading.innerHTML =
-    "<div><h3>Model usage</h3><p>Requests, input tokens, and errors observed per model since tracking began.</p></div>";
+    "<div><h3>Model usage</h3><p>Requests, input tokens, and errors for the models currently configured (Default/Fable/Opus/Sonnet/Haiku).</p></div>";
   section.appendChild(heading);
+
+  const controls = document.createElement("div");
+  controls.className = "usage-controls";
 
   const refreshButton = document.createElement("button");
   refreshButton.type = "button";
@@ -264,32 +291,69 @@ function renderUsage(usage) {
   refreshButton.addEventListener("click", async () => {
     renderUsage(await api("/admin/api/usage"));
   });
-  section.appendChild(refreshButton);
+  controls.appendChild(refreshButton);
 
-  const models = Object.entries(usage.models || {}).sort(
-    (a, b) => b[1].requests - a[1].requests,
-  );
+  const sortLabel = document.createElement("span");
+  sortLabel.className = "usage-sort-label";
+  sortLabel.textContent = "Sort by:";
+  controls.appendChild(sortLabel);
 
-  if (models.length === 0) {
+  [
+    ["list", "Model list order"],
+    ["usage", "Most used"],
+  ].forEach(([value, label]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `ghost-button usage-sort-button${
+      state.usageSort === value ? " active" : ""
+    }`;
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      state.usageSort = value;
+      renderUsage(usage);
+    });
+    controls.appendChild(button);
+  });
+
+  section.appendChild(controls);
+
+  const { roleLabelsByRef, listOrderByRef } = configuredModelRoles();
+  const emptyStats = { requests: 0, errors: 0, input_tokens: 0, last_used_at: null };
+  const rows = Array.from(roleLabelsByRef.entries()).map(([modelRef, roleLabels]) => ({
+    modelRef,
+    roleLabels,
+    stats: (usage.models && usage.models[modelRef]) || emptyStats,
+  }));
+
+  if (state.usageSort === "usage") {
+    rows.sort((a, b) => b.stats.requests - a.stats.requests);
+  } else {
+    rows.sort(
+      (a, b) => listOrderByRef.get(a.modelRef) - listOrderByRef.get(b.modelRef),
+    );
+  }
+
+  if (rows.length === 0) {
     const empty = document.createElement("p");
     empty.className = "field-description";
-    empty.textContent = "No requests recorded yet.";
+    empty.textContent = "No models configured yet.";
     section.appendChild(empty);
   } else {
     const table = document.createElement("table");
     table.className = "usage-table";
     const thead = document.createElement("thead");
     thead.innerHTML =
-      "<tr><th>Model</th><th>Requests</th><th>Input tokens</th><th>Errors</th><th>Last used</th></tr>";
+      "<tr><th>Role</th><th>Model</th><th>Requests</th><th>Input tokens</th><th>Errors</th><th>Last used</th></tr>";
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
-    models.forEach(([modelRef, stats]) => {
+    rows.forEach(({ modelRef, roleLabels, stats }) => {
       const row = document.createElement("tr");
       const lastUsed = stats.last_used_at
         ? new Date(stats.last_used_at).toLocaleString()
         : "-";
       row.innerHTML = `
+        <td>${roleLabels.join(", ")}</td>
         <td>${modelRef}</td>
         <td>${stats.requests}</td>
         <td>${stats.input_tokens.toLocaleString()}</td>
