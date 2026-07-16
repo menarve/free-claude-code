@@ -192,6 +192,11 @@ OPENAI_CHAT_PROFILES: dict[str, OpenAIChatProfile] = {
             provider_name="CEREBRAS",
             include_extra_body=True,
             max_tokens_field="max_completion_tokens",
+            # Cerebras rejects the non-standard `reasoning_content` property on
+            # replayed assistant turns with 400 wrong_api_format, so every turn
+            # with thinking history fails (it hosts GLM-4.7, the top candidate).
+            # Drop the replayed reasoning like the HuggingFace profile does.
+            reasoning_replay=ReasoningReplayMode.DISABLED,
         )
     ),
     "groq": OpenAIChatProfile(

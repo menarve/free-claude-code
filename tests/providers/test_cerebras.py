@@ -78,6 +78,27 @@ def test_build_request_body_global_disable_blocks_reasoning_mapping():
     assert "assistant_reasoning_content" not in roles
 
 
+def test_build_request_body_does_not_replay_prior_reasoning_content(cerebras_provider):
+    # Cerebras rejects the non-standard `reasoning_content` property on replayed
+    # assistant turns with 400 wrong_api_format, so the profile must drop it.
+    req = make_request(
+        messages=[
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "hidden prior thought"},
+                    {"type": "text", "text": "visible answer"},
+                ],
+            }
+        ],
+    )
+
+    body = cerebras_provider._build_request_body(req)
+
+    assert all("reasoning_content" not in message for message in body["messages"])
+    assert "hidden prior thought" not in str(body)
+
+
 def test_build_request_body_remaps_max_tokens_preserves_message_name(cerebras_provider):
     """Cerebras does not strip message ``name``; ``max_tokens`` maps to completion field."""
     with patch(
