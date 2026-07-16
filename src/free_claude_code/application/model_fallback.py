@@ -164,6 +164,7 @@ _CODING_ORDER = (
     r"llama-4",
     r"llama-3\.3",
     r"llama-3\.1",
+    r"nemotron",
     r"mistral-(?:large|medium)",
     r"gemini-3(?:\.\d+)?-flash",
     r"qwen-?3",
@@ -211,11 +212,15 @@ def rank_potency(model_ref: str) -> int:
     """
 
     ref = model_ref.lower()
-    size = _size_score(ref)
     index = _coding_index(ref)
     if index is None:
-        return size
-    curated = (len(_CODING_PATTERNS) - index) * 1000 + min(size, 999)
+        return _size_score(ref)
+    # Within a curated tier, break ties by real parameter count (0-999b) so a
+    # bigger member of a family (nemotron-ultra-550b) outranks a smaller one
+    # (nemotron-super-120b). The tier itself always dominates the tiebreak.
+    sizes = [float(match) for match in _SIZE_RE.findall(ref)]
+    params = int(max(sizes)) if sizes else 0
+    curated = (len(_CODING_PATTERNS) - index) * 1000 + min(params, 999)
     is_small_variant = bool(set(_WORD_RE.findall(ref)) & _SMALL_TOKENS)
     return (1_000_000 if is_small_variant else 2_000_000) + curated
 
