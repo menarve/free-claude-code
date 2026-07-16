@@ -399,6 +399,11 @@ async def test_derivation_skips_models_in_cooldown() -> None:
     assert [chunk async for chunk in stream] == ["event: message_stop\ndata: {}\n\n"]
     assert providers["open_router"].stream_calls == []  # skipped, never attempted
     assert len(working.stream_calls) == 1
+    # The parked model is dropped by the cheap cooldown pre-check, so it is
+    # never resolved (nor MODEL-DIRECT logged); only the working model resolves.
+    resolved_refs = [call.args[0] for call in model_router.resolve.call_args_list]
+    assert "open_router/nemotron-550b:free" not in resolved_refs
+    assert "gemini/gemini-3.1-flash-lite" in resolved_refs
 
 
 @pytest.mark.asyncio

@@ -156,17 +156,26 @@ class ProviderExecutor:
                     # `_model_router` is configured before any request reaches
                     # the fallback loop; it is only None prior to setup.
                     assert self._model_router is not None
+                    # Skip models a recent failure put in cooldown BEFORE
+                    # resolving and logging them. A derivation chain can carry
+                    # ~30 parked candidates (paid, tiny-window, phantom); a cheap
+                    # partition of the "provider/model" ref matches what resolve()
+                    # would produce, so we drop them without re-resolving and
+                    # re-logging a MODEL DIRECT line for each one every request.
+                    probe_id, separator, probe_model = candidate_ref.partition("/")
+                    if (
+                        derivation
+                        and separator
+                        and self._provider_resolver(probe_id).is_model_in_cooldown(
+                            probe_model
+                        )
+                    ):
+                        continue
                     resolved = self._model_router.resolve(candidate_ref)
                     candidate_provider_id = resolved.provider_id
                     candidate_provider_model = resolved.provider_model
                     candidate_thinking = resolved.thinking_enabled
                     candidate_provider = self._provider_resolver(candidate_provider_id)
-                    # Skip models a recent rate limit put in cooldown instead of
-                    # waiting on a lost cause: derivation moves to the next model.
-                    if derivation and candidate_provider.is_model_in_cooldown(
-                        candidate_provider_model
-                    ):
-                        continue
                     candidate_request = routed.request.model_copy(deep=True)
                     candidate_request.model = candidate_provider_model
                     candidate_provider.preflight_stream(
