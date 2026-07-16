@@ -263,6 +263,28 @@ _CASES = (
         model_fallback_eligible=True,
     ),
     _ClassificationCase(
+        "http_413_request_too_large_parks_in_cooldown",
+        lambda: _http_status_error(413, "Payload Too Large"),
+        FailureKind.INVALID_REQUEST,
+        413,
+        False,
+        rate_limit_block_seconds=3600.0,
+        model_fallback_eligible=True,
+    ),
+    _ClassificationCase(
+        "openai_413_request_too_large_parks_in_cooldown",
+        lambda: _openai_status_error(
+            openai.APIStatusError,
+            status_code=413,
+            message="tokens_limit_reached",
+        ),
+        FailureKind.INVALID_REQUEST,
+        413,
+        False,
+        rate_limit_block_seconds=3600.0,
+        model_fallback_eligible=True,
+    ),
+    _ClassificationCase(
         "http_502_keeps_overload_quirk",
         lambda: _http_status_error(502, "Bad gateway"),
         FailureKind.OVERLOADED,

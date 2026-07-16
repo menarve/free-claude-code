@@ -272,6 +272,21 @@ def _classify_provider_failure(
             model_fallback_eligible=True,
         )
 
+    if _is_request_too_large(exc):
+        # 413: the request exceeds the model's context window (e.g. GitHub
+        # Models caps free-tier context far below Claude Code's ~120K requests
+        # and returns tokens_limit_reached). Like an 8K context 400, this is
+        # structural, so park the model and fall through to a larger-window
+        # candidate instead of retrying the same overflow every turn.
+        mark_rate_limited(_MAX_RATE_LIMIT_COOLDOWN_S)
+        return _failure(
+            FailureKind.INVALID_REQUEST,
+            413,
+            _INVALID_REQUEST_MESSAGE,
+            False,
+            model_fallback_eligible=True,
+        )
+
     if isinstance(exc, openai.AuthenticationError):
         return _failure(FailureKind.AUTHENTICATION, 401, _AUTHENTICATION_MESSAGE, False)
     if isinstance(exc, openai.PermissionDeniedError):
@@ -492,6 +507,13 @@ def _is_payment_required(exc: BaseException) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code == 402
     return _status_from_exception(exc) == 402
+
+
+def _is_request_too_large(exc: BaseException) -> bool:
+    """Return whether the request exceeded the model's size limit (HTTP 413)."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code == 413
+    return _status_from_exception(exc) == 413
 
 
 def _status_from_body(body: Any) -> int | None:
