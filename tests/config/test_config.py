@@ -488,6 +488,31 @@ class TestSettings:
             is False
         )
 
+    def test_dotenv_provider_key_overrides_stale_shell_export(
+        self, monkeypatch, tmp_path
+    ):
+        """The managed .env provider key wins over a stale shell-exported one."""
+        from free_claude_code.config.settings import Settings
+
+        env_file = tmp_path / ".env"
+        env_file.write_text("GEMINI_API_KEY=env-key\n", encoding="utf-8")
+        # A stale key exported in the shell (e.g. ~/.zshrc) must not win.
+        monkeypatch.setenv("GEMINI_API_KEY", "stale-shell-key")
+        monkeypatch.setitem(Settings.model_config, "env_file", (env_file,))
+
+        assert Settings().gemini_api_key == "env-key"
+
+    def test_shell_provider_key_used_when_dotenv_omits_it(self, monkeypatch, tmp_path):
+        """Without a .env entry, the shell-exported key is still honored."""
+        from free_claude_code.config.settings import Settings
+
+        env_file = tmp_path / ".env"
+        env_file.write_text("MODEL=gemini/gemini-3.5-flash\n", encoding="utf-8")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "shell-openrouter-key")
+        monkeypatch.setitem(Settings.model_config, "env_file", (env_file,))
+
+        assert Settings().open_router_api_key == "shell-openrouter-key"
+
     @pytest.mark.parametrize("removed_key", ["NIM_ENABLE_THINKING", "ENABLE_THINKING"])
     def test_removed_thinking_env_keys_are_ignored(self, monkeypatch, removed_key):
         """Stale thinking env keys do not block startup or affect settings."""

@@ -8,7 +8,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .constants import HTTP_CONNECT_TIMEOUT_DEFAULT
 from .env_files import (
-    ANTHROPIC_AUTH_TOKEN_ENV,
     env_file_override,
     settings_env_files,
 )
@@ -399,11 +398,24 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def prefer_dotenv_anthropic_auth_token(self) -> "Settings":
-        """Let explicit .env auth config override stale shell/client tokens."""
-        dotenv_value = env_file_override(self.model_config, ANTHROPIC_AUTH_TOKEN_ENV)
-        if dotenv_value is not None:
-            self.anthropic_auth_token = dotenv_value
+    def prefer_dotenv_credentials(self) -> "Settings":
+        """Let the managed .env win over shell-exported credentials.
+
+        The admin UI writes provider keys/tokens to the managed .env, so those
+        must take precedence over any same-named variable inherited from the
+        shell (e.g. a stale GEMINI_API_KEY exported in ~/.zshrc). Pydantic
+        otherwise ranks process env above the dotenv, which silently ignored
+        admin changes. Scoped to credential fields so operational overrides
+        (HOST, PORT, ...) still work through the environment.
+        """
+        for field_name, field in type(self).model_fields.items():
+            alias = field.validation_alias
+            env_key = alias if isinstance(alias, str) else field_name.upper()
+            if not env_key.endswith(("_API_KEY", "_TOKEN", "_ACCOUNT_ID")):
+                continue
+            dotenv_value = env_file_override(self.model_config, env_key)
+            if dotenv_value is not None:
+                setattr(self, field_name, dotenv_value)
         return self
 
     model_config = SettingsConfigDict(
