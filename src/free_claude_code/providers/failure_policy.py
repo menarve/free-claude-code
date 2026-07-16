@@ -445,17 +445,27 @@ def _is_model_switchable_bad_request(exc: BaseException) -> bool:
     )
 
 
-def _is_model_unavailable_bad_request(exc: BaseException) -> bool:
-    """Return whether a 400 means the model is persistently unavailable here."""
-    return _has_marker(transient_error_text(exc), _MODEL_UNAVAILABLE_MARKERS)
-
-
 def _bad_request_failure(
     exc: BaseException, mark_rate_limited: MarkRateLimited
 ) -> ExecutionFailure:
-    """Classify a 400. A model that is unavailable for this tier is parked in
-    cooldown so the derivation stops retrying it every turn."""
-    if _is_model_unavailable_bad_request(exc):
+    """Classify a 400. Persistent 400s are parked in cooldown so the derivation
+    stops retrying them every turn; they still fall back this turn.
+
+    Persistent means either the model is unavailable for this tier, or its
+    context window is too small to ever fit an agent-sized request (e.g.
+    Cerebras' 8K GLM-4.7 rejects Claude Code's ~120K requests every turn).
+    Parking context-length rejections trades a little precision - a model with
+    a mid-size window that only overflowed on one unusually large request is
+    benched for the cooldown - for a large win on models whose window simply
+    cannot serve agentic coding: Claude Code requests stay large across a
+    session, so a model that did not fit rarely fits again, and other
+    candidates cover the turn.
+    """
+    text = transient_error_text(exc)
+    persistent = _has_marker(text, _MODEL_UNAVAILABLE_MARKERS) or _has_marker(
+        text, _CONTEXT_LENGTH_MARKERS
+    )
+    if persistent:
         mark_rate_limited(_MAX_RATE_LIMIT_COOLDOWN_S)
     return _failure(
         FailureKind.INVALID_REQUEST,

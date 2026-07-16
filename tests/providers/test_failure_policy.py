@@ -97,7 +97,7 @@ _CASES = (
         False,
     ),
     _ClassificationCase(
-        "openai_bad_request_context_length_is_model_fallback_eligible",
+        "openai_bad_request_context_length_parks_in_cooldown",
         lambda: _openai_status_error(
             openai.BadRequestError,
             status_code=400,
@@ -109,6 +109,23 @@ _CASES = (
         FailureKind.INVALID_REQUEST,
         400,
         False,
+        rate_limit_block_seconds=3600.0,
+        model_fallback_eligible=True,
+    ),
+    _ClassificationCase(
+        "openai_bad_request_tiny_context_window_parks_in_cooldown",
+        lambda: _openai_status_error(
+            openai.BadRequestError,
+            status_code=400,
+            message=(
+                "Please reduce the length of the messages or completion. "
+                "Current length is 124567 while limit is 8192"
+            ),
+        ),
+        FailureKind.INVALID_REQUEST,
+        400,
+        False,
+        rate_limit_block_seconds=3600.0,
         model_fallback_eligible=True,
     ),
     _ClassificationCase(
