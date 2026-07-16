@@ -541,7 +541,12 @@ def test_launch_claude_passes_args_and_child_env(
 
     assert exc_info.value.code == 7
     popen.assert_called_once()
-    assert popen.call_args.args[0] == ["resolved-claude.cmd", "--model", "sonnet"]
+    command = popen.call_args.args[0]
+    # fcc injects its isolated --settings before the user's own arguments.
+    assert command[0] == "resolved-claude.cmd"
+    assert command[1] == "--settings"
+    assert command[2].endswith("claude-settings.json")
+    assert command[3:] == ["--model", "sonnet"]
     child_env = popen.call_args.kwargs["env"]
     assert child_env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:9191"
     assert child_env["ANTHROPIC_AUTH_TOKEN"] == "proxy-token"

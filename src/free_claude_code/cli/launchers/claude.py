@@ -8,6 +8,7 @@ from free_claude_code.cli.claude_env import (
     CLAUDE_BINARY_NAME,
     build_claude_proxy_env,
 )
+from free_claude_code.cli.claude_settings import ensure_fcc_claude_settings
 from free_claude_code.config.server_urls import local_proxy_root_url
 from free_claude_code.config.settings import get_settings
 
@@ -59,6 +60,13 @@ def claude_binary_name() -> str:
 def build_claude_launcher_command(
     *, binary_path: str, argv: Sequence[str]
 ) -> list[str]:
-    """Return the Claude wrapper command without changing user arguments."""
+    """Return the Claude command with fcc's isolated settings prepended.
 
-    return [binary_path, *argv]
+    ``--settings`` loads fcc-only settings (Haiku 200K window + derivation
+    status line) that merge over the user's global config, so the plain
+    ``claude`` command on their paid plan stays untouched. User arguments follow
+    unchanged; an explicit ``--settings`` the user passes wins by position.
+    """
+
+    override_path = ensure_fcc_claude_settings()
+    return [binary_path, "--settings", override_path, *argv]

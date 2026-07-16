@@ -12,6 +12,7 @@ SERVER_LOG_FILENAME = "server.log"
 CODEX_MODEL_CATALOG_FILENAME = "codex-model-catalog.json"
 USAGE_STATS_FILENAME = "usage_stats.json"
 ACTIVE_MODEL_FILENAME = "active_model"
+CLAUDE_SETTINGS_OVERRIDE_FILENAME = "claude-settings.json"
 
 
 def config_dir_path() -> Path:
@@ -68,3 +69,14 @@ def active_model_path() -> Path:
     """
 
     return config_dir_path() / ACTIVE_MODEL_FILENAME
+
+
+def claude_settings_override_path() -> Path:
+    """Return the fcc-only Claude Code settings file.
+
+    Passed to Claude Code via ``--settings`` so fcc-claude carries its own
+    model and status line WITHOUT touching the user's global
+    ``~/.claude/settings.json`` (which their real ``claude`` plan uses).
+    """
+
+    return config_dir_path() / CLAUDE_SETTINGS_OVERRIDE_FILENAME
