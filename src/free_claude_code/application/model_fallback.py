@@ -27,6 +27,8 @@ from free_claude_code.application.model_metadata import ProviderModelInfo
 # "gemma" is intentionally NOT a small marker: Gemma 4 26B/31B are mid-size
 # models whose parameter count places them correctly. Their class is decided by
 # the "26b"/"31b" in the name, not the family word.
+# "oss" (open-source) is likewise NOT a size marker: gpt-oss-120b is a large
+# model and must be classed by its "120b", not sunk as if it were small.
 _SMALL_TOKENS = frozenset(
     {
         "lite",
@@ -38,7 +40,6 @@ _SMALL_TOKENS = frozenset(
         "haiku",
         "xs",
         "phi",
-        "oss",
     }
 )
 _LARGE_TOKENS = frozenset({"opus", "ultra", "max", "pro", "large", "nemotron"})
@@ -94,6 +95,7 @@ _NON_CHAT_MARKERS = (
     "detect",
     "speech",
     "voxtral",
+    "orpheus",
     "lyria",
     "veo",
     # Agent/specialized Gemini models that only serve the Interactions or Live

@@ -150,6 +150,17 @@ def test_is_chat_model_excludes_non_chat_markers():
     assert is_chat_model("open_router/openai/gpt-oss-20b:free") is True
     assert is_chat_model("open_router/openai/whisper-large-v3") is False
     assert is_chat_model("open_router/google/text-embedding-3") is False
+    # Orpheus is a text-to-speech model, not a chat model.
+    assert is_chat_model("groq/canopylabs/orpheus-v1-english") is False
+
+
+def test_rank_potency_classes_gpt_oss_120b_as_large_by_params():
+    # "oss" (open-source) is not a size marker: gpt-oss-120b must be ranked by
+    # its 120b parameter count (large class), not sunk as if it were small.
+    oss_120b = rank_potency("cerebras/gpt-oss-120b")
+    assert oss_120b >= 30000  # large-class floor
+    assert oss_120b > rank_potency("gemini/gemini-3.5-flash")
+    assert oss_120b > rank_potency("groq/openai/gpt-oss-20b")
 
 
 def test_rank_potency_orders_known_families_above_unknown():
