@@ -68,6 +68,7 @@ _MODEL_UNAVAILABLE_MARKERS = frozenset(
 )
 _AUTHENTICATION_MESSAGE = "Provider authentication failed. Check API key."
 _PERMISSION_MESSAGE = "Provider denied access to this model."
+_PAYMENT_REQUIRED_MESSAGE = "Provider requires payment for this model."
 _RATE_LIMIT_MESSAGE = "Provider rate limit reached. Please retry shortly."
 _INVALID_REQUEST_MESSAGE = "Invalid request sent to provider."
 _OVERLOADED_MESSAGE = "Provider is currently overloaded. Please retry."
@@ -256,6 +257,20 @@ def _classify_provider_failure(
         if exc.kind == FailureKind.RATE_LIMIT:
             mark_rate_limited(rate_limit_cooldown_seconds(exc))
         return exc
+
+    if _is_payment_required(exc):
+        # 402: the provider lists this model but only serves it for pay (e.g.
+        # HuggingFace's router bills the DeepSeek models). It will never succeed
+        # on the free tier, so park it in a long cooldown and fall through to
+        # the next candidate instead of re-hitting the paywall every turn.
+        mark_rate_limited(_MAX_RATE_LIMIT_COOLDOWN_S)
+        return _failure(
+            FailureKind.PERMISSION,
+            402,
+            _PAYMENT_REQUIRED_MESSAGE,
+            False,
+            model_fallback_eligible=True,
+        )
 
     if isinstance(exc, openai.AuthenticationError):
         return _failure(FailureKind.AUTHENTICATION, 401, _AUTHENTICATION_MESSAGE, False)
@@ -460,6 +475,13 @@ def _stable_upstream(status_code: int) -> str:
 def _status_from_exception(exc: BaseException) -> int | None:
     status = getattr(exc, "status_code", None)
     return status if isinstance(status, int) else None
+
+
+def _is_payment_required(exc: BaseException) -> bool:
+    """Return whether the upstream rejected the model as paid-only (HTTP 402)."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code == 402
+    return _status_from_exception(exc) == 402
 
 
 def _status_from_body(body: Any) -> int | None:

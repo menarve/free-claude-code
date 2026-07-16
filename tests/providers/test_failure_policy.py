@@ -150,6 +150,19 @@ _CASES = (
         model_fallback_eligible=True,
     ),
     _ClassificationCase(
+        "openai_payment_required_parks_model_in_cooldown",
+        lambda: _openai_status_error(
+            openai.APIStatusError,
+            status_code=402,
+            message="Payment Required",
+        ),
+        FailureKind.PERMISSION,
+        402,
+        False,
+        rate_limit_block_seconds=3600.0,
+        model_fallback_eligible=True,
+    ),
+    _ClassificationCase(
         "openai_bad_request_malformed_is_not_model_fallback_eligible",
         lambda: _openai_status_error(
             openai.BadRequestError,
@@ -219,6 +232,15 @@ _CASES = (
         lambda: _http_status_error(403, "Forbidden"),
         FailureKind.PERMISSION,
         403,
+        False,
+        rate_limit_block_seconds=3600.0,
+        model_fallback_eligible=True,
+    ),
+    _ClassificationCase(
+        "http_402_is_payment_required_and_parks_in_cooldown",
+        lambda: _http_status_error(402, "Payment Required"),
+        FailureKind.PERMISSION,
+        402,
         False,
         rate_limit_block_seconds=3600.0,
         model_fallback_eligible=True,
