@@ -178,6 +178,15 @@ def test_rank_potency_classifies_mistral_coding_and_reasoning_families():
     assert rank_potency("mistral/magistral-medium-latest") > unknown
 
 
+def test_rank_potency_puts_top_free_open_weight_coders_above_prior_gen():
+    # Grounded in 2026 coding benchmarks: GLM-4.7, DeepSeek-V4 and Kimi-K2 top
+    # the open-weight coding charts, above prior-generation GPT-4o.
+    gpt4o = rank_potency("github_models/openai/gpt-4o")
+    assert rank_potency("cerebras/zai-glm-4.7") > gpt4o
+    assert rank_potency("nvidia_nim/deepseek-ai/deepseek-v4-pro") > gpt4o
+    assert rank_potency("nvidia_nim/moonshotai/kimi-k2.6") > gpt4o
+
+
 def test_rank_potency_orders_known_families_above_unknown():
     assert rank_potency("open_router/anthropic/claude-opus-4.8") > rank_potency(
         "open_router/some/mystery-model"

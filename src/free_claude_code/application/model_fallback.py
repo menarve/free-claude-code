@@ -141,41 +141,44 @@ def is_free_candidate(model_ref: str) -> bool:
     return True
 
 
-# Curated coding-capability order, BEST first. A model's rank is the position
-# of the first family it matches; parameter count must not push a big-but-weaker
-# model above a frontier one (e.g. gpt-oss-120b or llama-3.1-405b above gpt-5).
-# This is opinionated and time-sensitive - update it as frontier models change.
-# Anything not listed falls back to the name/size heuristic, always ranked below
-# the known families. `-mini/-nano/-lite` variants are demoted below their
-# full-size siblings.
+# Curated coding-capability order, BEST first, grounded in 2026 coding
+# benchmarks (Aider Polyglot, SWE-bench Verified/Pro, LiveCodeBench). Frontier
+# proprietary models (Claude, gpt-5) lead but are gated/absent on the free
+# tiers; among the free open-weight coders GLM-4.7, DeepSeek-V4/V3.2 and Kimi-K2
+# top the charts (GLM leads open-weight LiveCodeBench; DeepSeek-V4-Pro ~80.6%
+# SWE-bench Verified; Kimi-K2.6 ~58.6% SWE-bench Pro), above prior-generation
+# GPT-4.1/4o. This is opinionated and time-sensitive - update as models change.
+# Parameter count and the name/size heuristic only rank families this table does
+# not know, always below the curated band; -mini/-nano/-lite variants sit below
+# their full-size siblings.
 _CODING_ORDER = (
     r"claude-opus",
     r"gpt-5",
     r"claude-sonnet",
-    r"deepseek-r\d",
-    r"(?:^|[/-])o[1-9](?:[/-]|$)",
-    r"gpt-4\.1",
-    r"gpt-4o",
+    r"glm-\d|zai-glm",
     r"deepseek-v\d",
+    r"kimi",
+    r"gpt-4\.1",
+    r"deepseek-r\d",
     r"codestral|devstral|qwen[\d.]*-?coder",
+    r"(?:^|[/-])o[1-9](?:[/-]|$)",
+    r"gpt-4o",
+    r"qwen-?3",
     r"magistral",
+    r"minimax",
     r"grok-[4-9]",
-    r"gemini-3(?:\.\d+)?-pro",
     r"llama-4",
+    r"gemini-3(?:\.\d+)?-pro",
     r"llama-3\.3",
-    r"llama-3\.1",
     r"nemotron",
+    r"llama-3\.1",
     r"mistral-(?:large|medium)",
     r"gemini-3(?:\.\d+)?-flash",
-    r"qwen-?3",
-    r"kimi",
-    r"minimax",
     r"gpt-oss",
+    r"gemma-4",
     r"gemini-2\.5-pro",
     r"gemini-2\.5-flash",
     r"command-a|command-r",
-    r"gemma-4",
-    r"glm-4|zai-",
     r"gemini-2\.0-flash",
     r"gemini[\w.-]*flash",
 )
