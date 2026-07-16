@@ -50,11 +50,12 @@ def test_execution_failure_is_the_direct_frozen_slotted_exception() -> None:
         "retryable",
         "model_fallback_eligible",
     )
-    assert ExecutionFailure.__slots__ == (
+    assert ExecutionFailure._FIELD_NAMES == (
         "kind",
         "status_code",
         "message",
         "retryable",
+        "model_fallback_eligible",
     )
     assert str(failure) == "Provider rate limit reached."
     assert failure.args == ("Provider rate limit reached.",)

@@ -152,6 +152,9 @@ class ProviderExecutor:
                     candidate_thinking = routed.resolved.thinking_enabled
                     candidate_provider = provider
                 else:
+                    # `_model_router` is configured before any request reaches
+                    # the fallback loop; it is only None prior to setup.
+                    assert self._model_router is not None
                     resolved = self._model_router.resolve(candidate_ref)
                     candidate_provider_id = resolved.provider_id
                     candidate_provider_model = resolved.provider_model

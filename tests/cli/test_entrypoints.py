@@ -52,7 +52,7 @@ class _JsonResponse:
     def __init__(self, payload: dict[str, object]) -> None:
         self._payload = payload
 
-    def __enter__(self) -> _JsonResponse:
+    def __enter__(self) -> "_JsonResponse":
         return self
 
     def __exit__(self, *_args: object) -> None:
@@ -522,7 +522,8 @@ def test_launch_claude_passes_args_and_child_env(
             "free_claude_code.cli.launchers.claude.get_settings", return_value=settings
         ),
         patch(
-            "free_claude_code.cli.launchers.claude.preflight_proxy", return_value=None
+            "free_claude_code.cli.launchers.claude.ensure_server_running",
+            return_value=None,
         ),
         patch(
             "free_claude_code.cli.launchers.common.shutil.which",
@@ -947,7 +948,8 @@ def test_launch_claude_keyboard_interrupt_kills_child_tree() -> None:
             "free_claude_code.cli.launchers.claude.get_settings", return_value=settings
         ),
         patch(
-            "free_claude_code.cli.launchers.claude.preflight_proxy", return_value=None
+            "free_claude_code.cli.launchers.claude.ensure_server_running",
+            return_value=None,
         ),
         patch(
             "free_claude_code.cli.launchers.common.shutil.which",
@@ -982,7 +984,8 @@ def test_launch_claude_exits_when_command_cannot_be_resolved(
             "free_claude_code.cli.launchers.claude.get_settings", return_value=settings
         ),
         patch(
-            "free_claude_code.cli.launchers.claude.preflight_proxy", return_value=None
+            "free_claude_code.cli.launchers.claude.ensure_server_running",
+            return_value=None,
         ),
         patch("free_claude_code.cli.launchers.common.shutil.which", return_value=None),
         patch("free_claude_code.cli.launchers.common.subprocess.Popen") as popen,
@@ -1008,7 +1011,7 @@ def test_launch_claude_unreachable_proxy_exits_with_hint(
             "free_claude_code.cli.launchers.claude.get_settings", return_value=settings
         ),
         patch(
-            "free_claude_code.cli.launchers.claude.preflight_proxy",
+            "free_claude_code.cli.launchers.claude.ensure_server_running",
             return_value="connection refused",
         ),
         patch("free_claude_code.cli.launchers.common.subprocess.Popen") as popen,

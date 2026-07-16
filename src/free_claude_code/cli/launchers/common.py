@@ -1,5 +1,6 @@
 """Shared process helpers for installed client CLI launchers."""
 
+import os
 import shutil
 import subprocess
 import sys
@@ -19,6 +20,22 @@ PROXY_PREFLIGHT_PATH = "/health"
 PROXY_PREFLIGHT_TIMEOUT_SECONDS = 1.5
 SERVER_AUTOSTART_TIMEOUT_SECONDS = 20.0
 SERVER_AUTOSTART_POLL_SECONDS = 0.25
+
+# fcc-server talks to upstream providers directly; it must never inherit an
+# HTTP(S) proxy meant only for Claude/ChatGPT traffic (e.g. one injected into
+# ~/.claude/settings.json by a split-tunnel VPN). Leaving these set would route
+# provider requests through that VPN's exit IP and trip provider IP blocks.
+_PROXY_ENV_VARS = frozenset({"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"})
+
+
+def _server_env_without_proxy() -> dict[str, str]:
+    """Return the current environment minus any inherited proxy variables."""
+
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key.upper() not in _PROXY_ENV_VARS
+    }
 
 
 def preflight_proxy(proxy_root_url: str) -> str | None:
@@ -60,7 +77,9 @@ def ensure_server_running(
 
     server_binary = shutil.which("fcc-server")
     if server_binary is None:
-        return f"proxy unreachable ({error}) and the fcc-server executable was not found"
+        return (
+            f"proxy unreachable ({error}) and the fcc-server executable was not found"
+        )
 
     print(
         f"Free Claude Code proxy is not running at {proxy_root_url}; starting fcc-server...",
@@ -76,6 +95,7 @@ def ensure_server_running(
             stderr=log_file,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
+            env=_server_env_without_proxy(),
         )
 
     deadline = time.monotonic() + startup_timeout_seconds
