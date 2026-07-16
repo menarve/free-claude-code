@@ -155,12 +155,30 @@ def test_is_chat_model_excludes_non_chat_markers():
 
 
 def test_rank_potency_frontier_outranks_big_open_weight():
-    # Capability order, not raw parameter count: a frontier model outranks a
-    # large open-weight one, which still outranks an unknown family.
-    frontier = rank_potency("gemini/gemini-3.5-flash")
+    # Similarity to Claude, not raw parameter count: a Claude-like frontier model
+    # outranks a large but narrower open-weight one, which still outranks an
+    # unknown family.
+    frontier = rank_potency("nvidia_nim/deepseek-ai/deepseek-v4-pro")
     open_weight = rank_potency("cerebras/gpt-oss-120b")
     unknown = rank_potency("open_router/some/mystery-model:free")
     assert frontier > open_weight > unknown
+
+
+def test_rank_potency_ranks_general_qwen3_above_narrow_coder_variant():
+    # Opus/Fable are generalist reasoners, so the general Qwen3 build must rank
+    # above the narrow coding specialist even though the coder scores high on
+    # pure code benchmarks.
+    general = rank_potency("open_router/qwen/qwen3-235b:free")
+    coder = rank_potency("open_router/qwen/qwen3-coder-480b:free")
+    assert general > coder
+
+
+def test_rank_potency_ranks_thinking_generalist_above_narrow_coder():
+    # A narrow coding specialist (codestral) sits below a general frontier model
+    # with native thinking, matching the Claude-experience ordering.
+    devstral = rank_potency("mistral/devstral-medium-latest")
+    deepseek = rank_potency("nvidia_nim/deepseek-ai/deepseek-v4-pro")
+    assert deepseek > devstral
 
 
 def test_rank_potency_demotes_mini_variant_below_full_size_sibling():

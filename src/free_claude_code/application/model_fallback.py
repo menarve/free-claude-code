@@ -149,44 +149,62 @@ def is_free_candidate(model_ref: str) -> bool:
     return True
 
 
-# Curated coding-capability order, BEST first, grounded in 2026 coding
-# benchmarks (Aider Polyglot, SWE-bench Verified/Pro, LiveCodeBench). Frontier
-# proprietary models (Claude, gpt-5) lead but are gated/absent on the free
-# tiers; among the free open-weight coders GLM-4.7, DeepSeek-V4/V3.2 and Kimi-K2
-# top the charts (GLM leads open-weight LiveCodeBench; DeepSeek-V4-Pro ~80.6%
-# SWE-bench Verified; Kimi-K2.6 ~58.6% SWE-bench Pro), above prior-generation
-# GPT-4.1/4o. This is opinionated and time-sensitive - update as models change.
-# Parameter count and the name/size heuristic only rank families this table does
-# not know, always below the curated band; -mini/-nano/-lite variants sit below
-# their full-size siblings.
+# Curated order by SIMILARITY to the Claude frontier experience (Opus 4.8 /
+# Fable 5) inside a coding agent - NOT raw coding-benchmark score. Weighted by:
+# native "thinking", agentic/tool-use (the point of Claude Code), real repo
+# coding, broad generality, and large context. Narrow coding specialists
+# (codestral/devstral, qwen-coder) rank BELOW comparable general frontier models
+# because Opus/Fable are generalist reasoners, not narrow coders; models without
+# native thinking (gpt-4.1/4o, mistral) rank below thinkers. Grounded in 2026
+# agentic/coding benchmarks (SWE-bench Verified/Pro, tau-bench/tool-use, Aider
+# Polyglot). Opinionated and time-sensitive - update as models change.
+# Parameter count, version, and pro/flash variant only break ties within a tier;
+# the name/size heuristic ranks unknown families below the curated band.
 _CODING_ORDER = (
+    # Anthropic frontier - the experience to match (the user runs Opus and Fable).
     r"claude-opus",
-    r"gpt-5",
+    r"claude-fable",
     r"claude-sonnet",
-    r"glm-\d|zai-glm",
+    # Proprietary frontier with native thinking - most Claude-like non-Claude.
+    r"gpt-5",
+    # Closest free models: native thinking + agentic tool-use + generalist +
+    # large context. DeepSeek-V4 (~1M ctx, top generality) edges GLM, which
+    # matches Opus on tool-use benchmarks; both lead the open-weight frontier.
     r"deepseek-v\d",
+    r"glm-\d|zai-glm",
+    # Elite agentic/tool-use with thinking, one notch down on context or breadth.
     r"kimi",
-    r"gpt-4\.1",
-    r"deepseek-r\d",
-    r"codestral|devstral|qwen[\d.]*-?coder",
-    r"(?:^|[/-])o[1-9](?:[/-]|$)",
-    r"gpt-4o",
-    r"qwen-?3",
-    r"magistral",
     r"minimax",
+    # General Qwen3 (reasoning + tool-use) - NOT the narrow coder build far below.
+    r"qwen-?3(?![\w.-]*coder)",
+    # Frontier-adjacent thinkers with a Claude-style or availability gap.
     r"grok-[4-9]",
+    r"deepseek-r\d",
+    r"(?:^|[/-])o[1-9](?:[/-]|$)",
+    # Capable generalists WITHOUT native thinking, or narrow specialists: these
+    # diverge from Claude's reason-then-act loop.
+    r"gpt-4\.1",
+    r"qwen[\d.]*-?coder",
+    r"magistral",
+    r"gpt-4o",
+    r"command-a|command-r",
     r"llama-4",
-    r"gemini-3(?:\.\d+)?-pro",
-    r"llama-3\.3",
+    # Most different from the Claude experience: narrow coders, older or
+    # non-thinking generalists.
+    r"codestral|devstral",
     r"nemotron",
+    r"llama-3\.3",
     r"llama-3\.1",
     r"mistral-(?:large|medium)",
-    r"gemini-3(?:\.\d+)?-flash",
     r"gpt-oss",
     r"gemma-4",
+    # Gemini: capable with 1M context (kept as the safety net for giant /compact
+    # requests) but deliberately low per the user's feedback that it fits their
+    # coding style less well.
+    r"gemini-3(?:\.\d+)?-pro",
+    r"gemini-3(?:\.\d+)?-flash",
     r"gemini-2\.5-pro",
     r"gemini-2\.5-flash",
-    r"command-a|command-r",
     r"gemini-2\.0-flash",
     r"gemini[\w.-]*flash",
 )
