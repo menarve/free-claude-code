@@ -170,6 +170,14 @@ def test_rank_potency_demotes_mini_variant_below_full_size_sibling():
     )
 
 
+def test_rank_potency_classifies_mistral_coding_and_reasoning_families():
+    # devstral (coding-tuned) and magistral (reasoning) must rank in the curated
+    # coding band, not sink as unknown families by size alone.
+    unknown = rank_potency("mistral/ministral-8b-latest")
+    assert rank_potency("mistral/devstral-medium-latest") > unknown
+    assert rank_potency("mistral/magistral-medium-latest") > unknown
+
+
 def test_rank_potency_orders_known_families_above_unknown():
     assert rank_potency("open_router/anthropic/claude-opus-4.8") > rank_potency(
         "open_router/some/mystery-model"
