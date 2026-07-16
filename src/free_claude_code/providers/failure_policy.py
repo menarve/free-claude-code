@@ -287,6 +287,20 @@ def _classify_provider_failure(
             model_fallback_eligible=True,
         )
 
+    if _is_model_not_found(exc):
+        # 404: the provider lists the model in /models but does not actually
+        # serve it (NVIDIA has ~45 such phantom entries - retired/EOL models the
+        # catalog still returns). It will 404 every turn, so park it and fall
+        # through instead of re-hitting the dead endpoint each request.
+        mark_rate_limited(_MAX_RATE_LIMIT_COOLDOWN_S)
+        return _failure(
+            FailureKind.UNAVAILABLE,
+            404,
+            _PERMISSION_MESSAGE,
+            False,
+            model_fallback_eligible=True,
+        )
+
     if isinstance(exc, openai.AuthenticationError):
         return _failure(FailureKind.AUTHENTICATION, 401, _AUTHENTICATION_MESSAGE, False)
     if isinstance(exc, openai.PermissionDeniedError):
@@ -514,6 +528,13 @@ def _is_request_too_large(exc: BaseException) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code == 413
     return _status_from_exception(exc) == 413
+
+
+def _is_model_not_found(exc: BaseException) -> bool:
+    """Return whether the provider has no such model to serve (HTTP 404)."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code == 404
+    return _status_from_exception(exc) == 404
 
 
 def _status_from_body(body: Any) -> int | None:

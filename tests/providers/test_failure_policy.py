@@ -285,6 +285,28 @@ _CASES = (
         model_fallback_eligible=True,
     ),
     _ClassificationCase(
+        "openai_404_phantom_model_parks_in_cooldown",
+        lambda: _openai_status_error(
+            openai.NotFoundError,
+            status_code=404,
+            message="",
+        ),
+        FailureKind.UNAVAILABLE,
+        404,
+        False,
+        rate_limit_block_seconds=3600.0,
+        model_fallback_eligible=True,
+    ),
+    _ClassificationCase(
+        "http_404_phantom_model_parks_in_cooldown",
+        lambda: _http_status_error(404, "Not Found"),
+        FailureKind.UNAVAILABLE,
+        404,
+        False,
+        rate_limit_block_seconds=3600.0,
+        model_fallback_eligible=True,
+    ),
+    _ClassificationCase(
         "http_502_keeps_overload_quirk",
         lambda: _http_status_error(502, "Bad gateway"),
         FailureKind.OVERLOADED,
