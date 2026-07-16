@@ -167,6 +167,7 @@ _CODING_ORDER = (
     r"mistral-(?:large|medium)",
     r"gemini-3(?:\.\d+)?-flash",
     r"qwen-?3",
+    r"minimax",
     r"gpt-oss",
     r"gemini-2\.5-pro",
     r"gemini-2\.5-flash",
