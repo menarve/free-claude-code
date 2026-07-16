@@ -11,6 +11,7 @@ FCC_LOGS_DIRNAME = "logs"
 SERVER_LOG_FILENAME = "server.log"
 CODEX_MODEL_CATALOG_FILENAME = "codex-model-catalog.json"
 USAGE_STATS_FILENAME = "usage_stats.json"
+ACTIVE_MODEL_FILENAME = "active_model"
 
 
 def config_dir_path() -> Path:
@@ -57,3 +58,13 @@ def usage_stats_path() -> Path:
     """Return the persisted per-model usage stats path."""
 
     return config_dir_path() / USAGE_STATS_FILENAME
+
+
+def active_model_path() -> Path:
+    """Return the path holding the model that last served a response.
+
+    A status-line command reads this so the user can see which model the
+    derivation chose for the current turn.
+    """
+
+    return config_dir_path() / ACTIVE_MODEL_FILENAME

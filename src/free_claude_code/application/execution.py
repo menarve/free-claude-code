@@ -24,6 +24,7 @@ from free_claude_code.core.trace import (
     traced_async_stream,
 )
 
+from .active_model import write_active_model
 from .model_fallback import build_fallback_chain, eligible_candidate_refs
 from .ports import ProviderResolver, RequestRuntimeLease, UsageStatsPort
 from .routing import ModelRouter, RoutedMessagesRequest
@@ -194,7 +195,9 @@ class ProviderExecutor:
                         thinking_enabled=candidate_thinking,
                     )
                     async for chunk in provider_stream:
-                        committed = True
+                        if not committed:
+                            committed = True
+                            write_active_model(candidate_provider_model)
                         yield chunk
                     if self._usage_stats is not None:
                         self._usage_stats.record_success(
