@@ -5,13 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Free Claude Code Admin</title>
     <link rel="icon" href="data:," />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="/admin/assets/admin.css" />
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">FC</div>
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="mvCap" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#EDE9FE" />
+                  <stop offset="1" stop-color="#C4B5FD" />
+                </linearGradient>
+                <linearGradient id="mvLeft" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#A78BFA" />
+                  <stop offset="1" stop-color="#7C3AED" />
+                </linearGradient>
+                <linearGradient id="mvRight" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#7C3AED" />
+                  <stop offset="1" stop-color="#5B21B6" />
+                </linearGradient>
+              </defs>
+              <path d="M16 3 29 9 16 14 3 9Z" fill="url(#mvCap)" />
+              <path d="M3 9 16 14 16 29Z" fill="url(#mvLeft)" />
+              <path d="M29 9 16 14 16 29Z" fill="url(#mvRight)" />
+            </svg>
+          </div>
           <div>
             <h1>Free Claude Code</h1>
             <p>Server Control</p>
