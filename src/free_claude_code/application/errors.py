@@ -29,7 +29,7 @@ class UnknownProviderError(InvalidRequestError):
     @classmethod
     def for_provider(
         cls, provider_id: str, supported_provider_ids: Iterable[str]
-    ) -> "UnknownProviderError":
+    ) -> UnknownProviderError:
         supported = "', '".join(supported_provider_ids)
         return cls(f"Unknown provider_type: '{provider_id}'. Supported: '{supported}'")
 

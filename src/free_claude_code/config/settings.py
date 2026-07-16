@@ -385,7 +385,7 @@ class Settings(BaseSettings):
         return v
 
     @model_validator(mode="after")
-    def check_nvidia_nim_api_key(self) -> "Settings":
+    def check_nvidia_nim_api_key(self) -> Settings:
         if (
             self.voice_note_enabled
             and self.whisper_device == "nvidia_nim"
@@ -398,7 +398,7 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def prefer_dotenv_credentials(self) -> "Settings":
+    def prefer_dotenv_credentials(self) -> Settings:
         """Let the managed .env win over shell-exported credentials.
 
         The admin UI writes provider keys/tokens to the managed .env, so those

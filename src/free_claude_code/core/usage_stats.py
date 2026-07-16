@@ -25,7 +25,7 @@ class ModelUsageStats:
         }
 
     @classmethod
-    def from_json(cls, data: Any) -> "ModelUsageStats":
+    def from_json(cls, data: Any) -> ModelUsageStats:
         if not isinstance(data, dict):
             return cls()
         requests = data.get("requests")

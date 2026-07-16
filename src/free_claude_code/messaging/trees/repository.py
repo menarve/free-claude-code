@@ -1,7 +1,5 @@
 """Manager-owned index of messaging tree aggregates."""
 
-from __future__ import annotations
-
 from loguru import logger
 
 from ..models import MessageScope

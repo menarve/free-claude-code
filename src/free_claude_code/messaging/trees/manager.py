@@ -1,7 +1,5 @@
 """Public facade for atomic messaging tree aggregates."""
 
-from __future__ import annotations
-
 import asyncio
 from collections.abc import Callable, Coroutine
 from typing import Any

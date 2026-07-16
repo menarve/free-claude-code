@@ -449,7 +449,7 @@ class _OpenAIChatStreamRunner:
                         )
                     break
 
-                except (asyncio.CancelledError, GeneratorExit):
+                except asyncio.CancelledError, GeneratorExit:
                     raise
                 except Exception as error:
                     generated_output = has_committed_sse_output(ledger)

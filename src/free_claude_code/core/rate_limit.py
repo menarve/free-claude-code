@@ -64,7 +64,7 @@ class StrictSlidingWindowLimiter:
             else:
                 await asyncio.sleep(0)
 
-    async def __aenter__(self) -> "StrictSlidingWindowLimiter":
+    async def __aenter__(self) -> StrictSlidingWindowLimiter:
         await self.acquire()
         return self
 
