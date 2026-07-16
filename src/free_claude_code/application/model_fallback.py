@@ -153,7 +153,7 @@ _CODING_ORDER = (
     r"gpt-5",
     r"claude-sonnet",
     r"deepseek-r\d",
-    r"(?:^|[/-])o[135](?:[/-]|$)",
+    r"(?:^|[/-])o[1-9](?:[/-]|$)",
     r"gpt-4\.1",
     r"gpt-4o",
     r"deepseek-v\d",
@@ -162,16 +162,18 @@ _CODING_ORDER = (
     r"gemini-3(?:\.\d+)?-pro",
     r"llama-4",
     r"llama-3\.3",
+    r"llama-3\.1",
     r"mistral-(?:large|medium)",
     r"gemini-3(?:\.\d+)?-flash",
     r"qwen-?3",
-    r"gpt-oss-120",
+    r"gpt-oss",
     r"gemini-2\.5-pro",
     r"gemini-2\.5-flash",
     r"command-a|command-r",
     r"gemma-4",
     r"glm-4|zai-",
     r"gemini-2\.0-flash",
+    r"gemini[\w.-]*flash",
 )
 _CODING_PATTERNS = tuple(re.compile(pattern) for pattern in _CODING_ORDER)
 

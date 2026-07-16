@@ -124,6 +124,32 @@ _CASES = (
         model_fallback_eligible=True,
     ),
     _ClassificationCase(
+        "openai_bad_request_unavailable_model_parks_in_cooldown",
+        lambda: _openai_status_error(
+            openai.BadRequestError,
+            status_code=400,
+            message="Unavailable model: gpt-5",
+        ),
+        FailureKind.INVALID_REQUEST,
+        400,
+        False,
+        rate_limit_block_seconds=3600.0,
+        model_fallback_eligible=True,
+    ),
+    _ClassificationCase(
+        "openai_permission_denied_parks_model_in_cooldown",
+        lambda: _openai_status_error(
+            openai.PermissionDeniedError,
+            status_code=403,
+            message="Forbidden",
+        ),
+        FailureKind.PERMISSION,
+        403,
+        False,
+        rate_limit_block_seconds=3600.0,
+        model_fallback_eligible=True,
+    ),
+    _ClassificationCase(
         "openai_bad_request_malformed_is_not_model_fallback_eligible",
         lambda: _openai_status_error(
             openai.BadRequestError,
@@ -189,11 +215,13 @@ _CASES = (
         False,
     ),
     _ClassificationCase(
-        "http_403_keeps_authentication_quirk",
+        "http_403_is_permission_denied_and_parks_in_cooldown",
         lambda: _http_status_error(403, "Forbidden"),
-        FailureKind.AUTHENTICATION,
-        401,
+        FailureKind.PERMISSION,
+        403,
         False,
+        rate_limit_block_seconds=3600.0,
+        model_fallback_eligible=True,
     ),
     _ClassificationCase(
         "http_502_keeps_overload_quirk",

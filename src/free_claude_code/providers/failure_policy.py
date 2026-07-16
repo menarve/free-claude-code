@@ -52,7 +52,22 @@ _INCOMPATIBLE_MODEL_MARKERS = frozenset(
         "only supports",
     }
 )
+# 400s that mean the model is catalog-listed but not usable for this tier/key
+# (GitHub Models "unavailable model", Gemini "no longer available", Cerebras
+# "does not exist"). These are persistent, so the model is parked in cooldown
+# instead of being retried every turn - while still falling back this turn.
+_MODEL_UNAVAILABLE_MARKERS = frozenset(
+    {
+        "unavailable model",
+        "no longer available",
+        "does not exist",
+        "do not have access",
+        "model not found",
+        "model_not_found",
+    }
+)
 _AUTHENTICATION_MESSAGE = "Provider authentication failed. Check API key."
+_PERMISSION_MESSAGE = "Provider denied access to this model."
 _RATE_LIMIT_MESSAGE = "Provider rate limit reached. Please retry shortly."
 _INVALID_REQUEST_MESSAGE = "Invalid request sent to provider."
 _OVERLOADED_MESSAGE = "Provider is currently overloaded. Please retry."
@@ -244,17 +259,23 @@ def _classify_provider_failure(
 
     if isinstance(exc, openai.AuthenticationError):
         return _failure(FailureKind.AUTHENTICATION, 401, _AUTHENTICATION_MESSAGE, False)
+    if isinstance(exc, openai.PermissionDeniedError):
+        # 403: no access to this model for this tier (catalog-listed but gated).
+        # Persistent, so park it in cooldown and try the next candidate instead
+        # of hitting the same wall every turn.
+        mark_rate_limited(_MAX_RATE_LIMIT_COOLDOWN_S)
+        return _failure(
+            FailureKind.PERMISSION,
+            403,
+            _PERMISSION_MESSAGE,
+            False,
+            model_fallback_eligible=True,
+        )
     if isinstance(exc, openai.RateLimitError):
         mark_rate_limited(rate_limit_cooldown_seconds(exc))
         return _failure(FailureKind.RATE_LIMIT, 429, _RATE_LIMIT_MESSAGE, True)
     if isinstance(exc, openai.BadRequestError):
-        return _failure(
-            FailureKind.INVALID_REQUEST,
-            400,
-            _INVALID_REQUEST_MESSAGE,
-            False,
-            model_fallback_eligible=_is_model_switchable_bad_request(exc),
-        )
+        return _bad_request_failure(exc, mark_rate_limited)
     if isinstance(exc, openai.APITimeoutError):
         return _failure(FailureKind.TIMEOUT, 500, _stable_upstream(500), True)
     if isinstance(exc, openai.APIConnectionError):
@@ -290,21 +311,24 @@ def _classify_provider_failure(
 
     if isinstance(exc, httpx.HTTPStatusError):
         status = exc.response.status_code
-        if status in (401, 403):
+        if status == 401:
             return _failure(
                 FailureKind.AUTHENTICATION, 401, _AUTHENTICATION_MESSAGE, False
+            )
+        if status == 403:
+            mark_rate_limited(_MAX_RATE_LIMIT_COOLDOWN_S)
+            return _failure(
+                FailureKind.PERMISSION,
+                403,
+                _PERMISSION_MESSAGE,
+                False,
+                model_fallback_eligible=True,
             )
         if status == 429:
             mark_rate_limited(rate_limit_cooldown_seconds(exc))
             return _failure(FailureKind.RATE_LIMIT, 429, _RATE_LIMIT_MESSAGE, True)
         if status == 400:
-            return _failure(
-                FailureKind.INVALID_REQUEST,
-                400,
-                _INVALID_REQUEST_MESSAGE,
-                False,
-                model_fallback_eligible=_is_model_switchable_bad_request(exc),
-            )
+            return _bad_request_failure(exc, mark_rate_limited)
         if status in (502, 503, 504):
             return overloaded_provider_failure()
         return _failure(
@@ -392,14 +416,38 @@ def _provider_retry_delay(exc: BaseException) -> float | None:
 def _is_model_switchable_bad_request(exc: BaseException) -> bool:
     """Return whether a 400 would succeed on a different model (fallback-worthy).
 
-    Covers prompts too large for this model's context window and models that
+    Covers prompts too large for this model's context window, models that
     simply can't serve chat completions (e.g. agent-only "Interactions API"
-    models). A different candidate can still succeed, so the derivation chain
-    should move on rather than fail the request.
+    models), and models that are unavailable for this tier. A different
+    candidate can still succeed, so the derivation chain should move on rather
+    than fail the request.
     """
     text = transient_error_text(exc)
-    return _has_marker(text, _CONTEXT_LENGTH_MARKERS) or _has_marker(
-        text, _INCOMPATIBLE_MODEL_MARKERS
+    return (
+        _has_marker(text, _CONTEXT_LENGTH_MARKERS)
+        or _has_marker(text, _INCOMPATIBLE_MODEL_MARKERS)
+        or _has_marker(text, _MODEL_UNAVAILABLE_MARKERS)
+    )
+
+
+def _is_model_unavailable_bad_request(exc: BaseException) -> bool:
+    """Return whether a 400 means the model is persistently unavailable here."""
+    return _has_marker(transient_error_text(exc), _MODEL_UNAVAILABLE_MARKERS)
+
+
+def _bad_request_failure(
+    exc: BaseException, mark_rate_limited: MarkRateLimited
+) -> ExecutionFailure:
+    """Classify a 400. A model that is unavailable for this tier is parked in
+    cooldown so the derivation stops retrying it every turn."""
+    if _is_model_unavailable_bad_request(exc):
+        mark_rate_limited(_MAX_RATE_LIMIT_COOLDOWN_S)
+    return _failure(
+        FailureKind.INVALID_REQUEST,
+        400,
+        _INVALID_REQUEST_MESSAGE,
+        False,
+        model_fallback_eligible=_is_model_switchable_bad_request(exc),
     )
 
 
