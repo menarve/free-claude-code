@@ -46,6 +46,14 @@ _LARGE_TOKENS = frozenset({"opus", "ultra", "max", "pro", "large", "nemotron"})
 _MEDIUM_TOKENS = frozenset(
     {"flash", "sonnet", "plus", "medium", "coder", "command", "mistral"}
 )
+# Capability variant within one model family, used to break ties inside a
+# curated tier: a "pro/max/ultra" build outranks the base build, which outranks
+# a reduced "flash/lite/mini/air" build (e.g. deepseek-v4-pro > deepseek-v4 >
+# deepseek-v4-flash). These are family-suffixes, not size classes.
+_HIGH_VARIANT_TOKENS = frozenset({"pro", "max", "ultra", "plus"})
+_LOW_VARIANT_TOKENS = frozenset(
+    {"flash", "lite", "mini", "nano", "air", "tiny", "micro", "small"}
+)
 
 _CLASS_SMALL = 1
 _CLASS_MEDIUM = 2
@@ -57,7 +65,7 @@ _SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*b(?![a-z0-9])")
 # Family version, e.g. gemini-3.1, gpt-5, claude-opus-4.8, qwen3.
 _VERSION_RE = re.compile(
     r"(?:gpt-|gemini-|claude-[a-z]+-|grok-|llama-|qwen-?|deepseek-|"
-    r"mistral-|hy|nemotron-|command-r-?|-v|/v)(\d+(?:\.\d+)?)"
+    r"mistral-|hy|nemotron-|command-r-?|glm-|kimi-k|minimax-m|-v|/v)(\d+(?:\.\d+)?)"
 )
 
 
@@ -219,14 +227,30 @@ def rank_potency(model_ref: str) -> int:
     index = _coding_index(ref)
     if index is None:
         return _size_score(ref)
-    # Within a curated tier, break ties by real parameter count (0-999b) so a
-    # bigger member of a family (nemotron-ultra-550b) outranks a smaller one
-    # (nemotron-super-120b). The tier itself always dominates the tiebreak.
+    # Within a curated tier, order by newer version, then stronger capability
+    # variant (pro/max/ultra > base > flash/lite/mini), then raw parameter count
+    # (nemotron-ultra-550b > nemotron-super-120b). The tier always dominates the
+    # tiebreak. Version+variant fix the old alphabetical tiebreak that ranked
+    # deepseek-v4-flash above the stronger deepseek-v4-pro.
+    words = set(_WORD_RE.findall(ref))
     sizes = [float(match) for match in _SIZE_RE.findall(ref)]
     params = int(max(sizes)) if sizes else 0
-    curated = (len(_CODING_PATTERNS) - index) * 1000 + min(params, 999)
-    is_small_variant = bool(set(_WORD_RE.findall(ref)) & _SMALL_TOKENS)
-    return (1_000_000 if is_small_variant else 2_000_000) + curated
+    version_match = _VERSION_RE.search(ref)
+    version = float(version_match.group(1)) if version_match else 0.0
+    if words & _HIGH_VARIANT_TOKENS:
+        variant = 2
+    elif words & _LOW_VARIANT_TOKENS:
+        variant = 0
+    else:
+        variant = 1
+    curated = (
+        (len(_CODING_PATTERNS) - index) * 100_000
+        + int(min(version, 9) * 10_000)
+        + variant * 2_000
+        + min(params, 999)
+    )
+    is_small_variant = bool(words & _SMALL_TOKENS)
+    return (10_000_000 if is_small_variant else 20_000_000) + curated
 
 
 def eligible_candidate_refs(

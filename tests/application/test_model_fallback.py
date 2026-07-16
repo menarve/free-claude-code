@@ -187,6 +187,19 @@ def test_rank_potency_puts_top_free_open_weight_coders_above_prior_gen():
     assert rank_potency("nvidia_nim/moonshotai/kimi-k2.6") > gpt4o
 
 
+def test_rank_potency_prefers_pro_variant_over_flash_within_a_tier():
+    # Both match the deepseek-v\d tier; the stronger "pro" build must outrank
+    # the reduced "flash" build (the old alphabetical tiebreak got this wrong,
+    # so the derivation served deepseek-v4-flash while deepseek-v4-pro existed).
+    pro = rank_potency("nvidia_nim/deepseek-ai/deepseek-v4-pro")
+    flash = rank_potency("nvidia_nim/deepseek-ai/deepseek-v4-flash")
+    v32 = rank_potency("nvidia_nim/deepseek-ai/deepseek-v3.2")
+    assert pro > flash
+    # Newer version wins over an older base build too.
+    assert flash > v32
+    assert pro > v32
+
+
 def test_rank_potency_orders_known_families_above_unknown():
     assert rank_potency("open_router/anthropic/claude-opus-4.8") > rank_potency(
         "open_router/some/mystery-model"
