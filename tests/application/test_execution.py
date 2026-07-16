@@ -466,8 +466,10 @@ async def test_derivation_switches_past_any_precommit_failure() -> None:
         token_counter=lambda _messages, _system, _tools: 5,
     )
     model_cache = MagicMock()
+    # deepseek-r1 outranks the flash-lite below it, so the 404 model heads the
+    # chain - exactly the pre-commit failure the derivation must survive.
     model_cache.cached_prefixed_model_infos.return_value = (
-        ProviderModelInfo("open_router/broken-model:free"),
+        ProviderModelInfo("open_router/deepseek-r1:free"),
         ProviderModelInfo("gemini/gemini-3.1-flash-lite"),
     )
     model_router = MagicMock()

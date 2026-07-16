@@ -154,13 +154,20 @@ def test_is_chat_model_excludes_non_chat_markers():
     assert is_chat_model("groq/canopylabs/orpheus-v1-english") is False
 
 
-def test_rank_potency_classes_gpt_oss_120b_as_large_by_params():
-    # "oss" (open-source) is not a size marker: gpt-oss-120b must be ranked by
-    # its 120b parameter count (large class), not sunk as if it were small.
-    oss_120b = rank_potency("cerebras/gpt-oss-120b")
-    assert oss_120b >= 30000  # large-class floor
-    assert oss_120b > rank_potency("gemini/gemini-3.5-flash")
-    assert oss_120b > rank_potency("groq/openai/gpt-oss-20b")
+def test_rank_potency_frontier_outranks_big_open_weight():
+    # Capability order, not raw parameter count: a frontier model outranks a
+    # large open-weight one, which still outranks an unknown family.
+    frontier = rank_potency("gemini/gemini-3.5-flash")
+    open_weight = rank_potency("cerebras/gpt-oss-120b")
+    unknown = rank_potency("open_router/some/mystery-model:free")
+    assert frontier > open_weight > unknown
+
+
+def test_rank_potency_demotes_mini_variant_below_full_size_sibling():
+    # gpt-5-mini is a known family but must sit below full-size gpt-5.
+    assert rank_potency("github_models/openai/gpt-5") > rank_potency(
+        "github_models/openai/gpt-5-mini"
+    )
 
 
 def test_rank_potency_orders_known_families_above_unknown():

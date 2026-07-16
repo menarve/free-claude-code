@@ -141,22 +141,79 @@ def is_free_candidate(model_ref: str) -> bool:
     return True
 
 
-def rank_potency(model_ref: str) -> int:
-    """Heuristic score for ordering candidates strongest -> weakest.
+# Curated coding-capability order, BEST first. A model's rank is the position
+# of the first family it matches; parameter count must not push a big-but-weaker
+# model above a frontier one (e.g. gpt-oss-120b or llama-3.1-405b above gpt-5).
+# This is opinionated and time-sensitive - update it as frontier models change.
+# Anything not listed falls back to the name/size heuristic, always ranked below
+# the known families. `-mini/-nano/-lite` variants are demoted below their
+# full-size siblings.
+_CODING_ORDER = (
+    r"claude-opus",
+    r"gpt-5",
+    r"claude-sonnet",
+    r"gemini-3(?:\.\d+)?-pro",
+    r"grok-[4-9]",
+    r"gemini-3(?:\.\d+)?-flash",
+    r"deepseek-r\d",
+    r"(?:^|[/-])o[135](?:[/-]|$)",
+    r"gpt-4\.1",
+    r"gemini-2\.5-pro",
+    r"gpt-4o",
+    r"deepseek-v\d",
+    r"codestral|qwen[\d.]*-?coder",
+    r"llama-4",
+    r"llama-3\.3",
+    r"mistral-(?:large|medium)",
+    r"gemini-2\.5-flash",
+    r"qwen-?3",
+    r"gpt-oss-120",
+    r"command-a|command-r",
+    r"gemma-4",
+    r"glm-4|zai-",
+    r"gemini-2\.0-flash",
+)
+_CODING_PATTERNS = tuple(re.compile(pattern) for pattern in _CODING_ORDER)
 
-    Size class dominates (large > medium > small); the family version number
-    and any explicit parameter count only break ties within a class. Name-based
-    only, since ProviderModelInfo carries no capability metadata.
-    """
 
-    ref = model_ref.lower()
+def _size_score(ref: str) -> int:
+    """Name/size heuristic used to rank models the curated table does not know."""
+
     sizes = [float(match) for match in _SIZE_RE.findall(ref)]
     params = max(sizes) if sizes else 0.0
     size_class = _size_class(ref, params)
     version_match = _VERSION_RE.search(ref)
     version = float(version_match.group(1)) if version_match else 0.0
-    # Class dominates; version then parameter count break within-class ties.
     return int(size_class * 10000 + min(version, 99) * 100 + min(params, 999))
+
+
+def _coding_index(ref: str) -> int | None:
+    """Index of the first curated family a ref matches, or None if unknown."""
+
+    for index, pattern in enumerate(_CODING_PATTERNS):
+        if pattern.search(ref):
+            return index
+    return None
+
+
+def rank_potency(model_ref: str) -> int:
+    """Score for ordering candidates strongest -> weakest for coding.
+
+    The curated `_CODING_ORDER` table decides the order of known frontier
+    families so a big open-weight model never outranks a frontier one. A
+    `-mini/-nano/-lite` variant of a known family sits below its full-size
+    siblings, and families the table does not know fall back to the pure size
+    heuristic, always below the curated band.
+    """
+
+    ref = model_ref.lower()
+    size = _size_score(ref)
+    index = _coding_index(ref)
+    if index is None:
+        return size
+    curated = (len(_CODING_PATTERNS) - index) * 1000 + min(size, 999)
+    is_small_variant = bool(set(_WORD_RE.findall(ref)) & _SMALL_TOKENS)
+    return (1_000_000 if is_small_variant else 2_000_000) + curated
 
 
 def eligible_candidate_refs(
