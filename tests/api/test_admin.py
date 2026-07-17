@@ -936,6 +936,7 @@ def test_admin_chat_runs_a_derivation_request(monkeypatch, tmp_path):
         )
     assert response.status_code == 200
     # The web chat routes through the same derivation chain as fcc-claude.
+    assert mock_create.await_args is not None
     request_data = mock_create.await_args.args[1]
     assert request_data.model == "menarve/derivation"
     assert request_data.stream is True
@@ -961,5 +962,6 @@ def test_admin_chat_pins_an_explicit_model_when_given(monkeypatch, tmp_path):
         )
     assert response.status_code == 200
     # An explicit model pins it instead of running the derivation sentinel.
+    assert mock_create.await_args is not None
     request_data = mock_create.await_args.args[1]
     assert request_data.model == "nvidia_nim/z-ai/glm-5.2"
