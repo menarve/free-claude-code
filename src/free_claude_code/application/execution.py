@@ -25,7 +25,11 @@ from free_claude_code.core.trace import (
 )
 
 from .active_model import write_active_model
-from .model_fallback import build_fallback_chain, eligible_candidate_refs
+from .model_fallback import (
+    build_fallback_chain,
+    eligible_candidate_refs,
+    prioritize_large_context,
+)
 from .ports import ProviderResolver, RequestRuntimeLease, UsageStatsPort
 from .routing import ModelRouter, RoutedMessagesRequest
 
@@ -128,7 +132,7 @@ class ProviderExecutor:
         derivation = routed.resolved.derivation
 
         async def provider_body() -> AsyncIterator[str]:
-            chain = self._fallback_chain(routed)
+            chain = self._fallback_chain(routed, input_tokens)
             if derivation and not chain:
                 raise ExecutionFailure(
                     kind=FailureKind.UNAVAILABLE,
@@ -299,13 +303,16 @@ class ProviderExecutor:
             extra=stream_trace,
         )
 
-    def _fallback_chain(self, routed: RoutedMessagesRequest) -> list[str]:
+    def _fallback_chain(
+        self, routed: RoutedMessagesRequest, input_tokens: int
+    ) -> list[str]:
         """Ordered ``provider/model`` refs to try for this request's model.
 
         In derivation mode the role pins no model, so the chain is every
         accessible candidate strongest-first. Otherwise the resolved model
         leads, followed by the discovered candidates when the cache is
-        available; without a cache, just the single resolved model.
+        available; without a cache, just the single resolved model. A giant
+        request (compaction) front-loads the large-window models.
         """
 
         derivation = routed.resolved.derivation
@@ -317,7 +324,9 @@ class ProviderExecutor:
             logger.warning("MODEL FALLBACK: model cache unavailable: {}", exc)
             return [] if derivation else [routed.resolved.provider_model_ref]
         if derivation:
-            return eligible_candidate_refs(model_infos)
+            return prioritize_large_context(
+                eligible_candidate_refs(model_infos), input_tokens
+            )
         chain = build_fallback_chain(routed.resolved.provider_model_ref, model_infos)
         if not chain:
             return [routed.resolved.provider_model_ref]

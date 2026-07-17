@@ -298,6 +298,55 @@ def eligible_candidate_refs(
     return refs
 
 
+# A request at/over the common 128K window (compaction sends ~190K) only fits
+# models with a bigger window. Below this it stays on the normal coding order.
+LARGE_REQUEST_TOKENS = 130_000
+# Known large-window families, ordered by fitness for a giant request (window +
+# speed on huge inputs). Gemini leads: 1M window and fast at large context - the
+# opposite of deepseek-v4-pro, which the normal order leads with but is slow on
+# huge inputs. deepseek-v4 (256K) is verified; the rest are likely-large
+# candidates - if one turns out smaller it just overflows and is parked, so
+# listing it here only changes ORDER, never correctness.
+_LARGE_CONTEXT_ORDER = (
+    r"gemini[\w.-]*flash",
+    r"gemini",
+    r"deepseek-v4",
+    r"kimi",
+    r"qwen-?3\.5",
+    r"minimax",
+    r"llama-4",
+)
+_LARGE_CONTEXT_PATTERNS = tuple(re.compile(pattern) for pattern in _LARGE_CONTEXT_ORDER)
+
+
+def _large_context_rank(ref: str) -> int | None:
+    """Index of the first large-window family a ref matches, or None if unknown."""
+
+    lowered = ref.lower()
+    for index, pattern in enumerate(_LARGE_CONTEXT_PATTERNS):
+        if pattern.search(lowered):
+            return index
+    return None
+
+
+def prioritize_large_context(refs: list[str], input_tokens: int) -> list[str]:
+    """Front-load known large-window models when the request is giant.
+
+    A ~190K compaction request overflows every 128K model, so leading the chain
+    with big-window models (gemini first for speed, then deepseek-v4, ...) keeps
+    /compact from stalling on a slow model or burning turns on small ones. Below
+    the threshold the order is unchanged. Stable: within each group the incoming
+    potency order is preserved.
+    """
+
+    if input_tokens < LARGE_REQUEST_TOKENS:
+        return refs
+    ranked = [(i, r, _large_context_rank(r)) for i, r in enumerate(refs)]
+    large = sorted((t for t in ranked if t[2] is not None), key=lambda t: (t[2], t[0]))
+    rest = [t for t in ranked if t[2] is None]
+    return [r for _, r, _ in large] + [r for _, r, _ in rest]
+
+
 def build_fallback_chain(
     primary_ref: str,
     model_infos: Iterable[ProviderModelInfo],

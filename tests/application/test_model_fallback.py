@@ -254,3 +254,33 @@ def test_rank_potency_breaks_ties_by_version_then_params():
     assert rank_potency("open_router/nvidia/nemotron-3-ultra-550b:free") > rank_potency(
         "open_router/nvidia/nemotron-3-super-120b:free"
     )
+
+
+def test_prioritize_large_context_leaves_normal_requests_untouched():
+    from free_claude_code.application.model_fallback import prioritize_large_context
+
+    refs = [
+        "nvidia_nim/deepseek-ai/deepseek-v4-pro",
+        "cerebras/zai-glm-4.7",
+        "gemini/models/gemini-3.5-flash",
+    ]
+    # Below the threshold the coding order is preserved exactly.
+    assert prioritize_large_context(refs, input_tokens=5000) == refs
+
+
+def test_prioritize_large_context_front_loads_big_window_models_for_giant_requests():
+    from free_claude_code.application.model_fallback import prioritize_large_context
+
+    refs = [
+        "cerebras/zai-glm-4.7",  # 8K - overflows a compaction request
+        "nvidia_nim/deepseek-ai/deepseek-v4-pro",  # 256K
+        "github_models/openai/gpt-4.1",  # 128K-ish
+        "gemini/models/gemini-3.5-flash",  # 1M, fastest on huge context
+    ]
+    ordered = prioritize_large_context(refs, input_tokens=190_000)
+    # Gemini (1M) leads, then deepseek-v4 (256K); small-window models sink.
+    assert ordered[0] == "gemini/models/gemini-3.5-flash"
+    assert ordered[1] == "nvidia_nim/deepseek-ai/deepseek-v4-pro"
+    assert ordered[-1] in ("cerebras/zai-glm-4.7", "github_models/openai/gpt-4.1")
+    # Same set, just reordered.
+    assert set(ordered) == set(refs)
