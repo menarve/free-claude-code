@@ -618,28 +618,35 @@ function appendChatMessage(role, text) {
   return { row, bubble };
 }
 
-async function sendChat() {
-  if (chatState.streaming) return;
-  const input = byId("chatInput");
-  const text = input.value.trim();
-  if (!text) return;
-  input.value = "";
-  input.style.height = "auto";
-  chatState.history.push({ role: "user", content: text });
-  appendChatMessage("user", text);
+function addRegenerateButton(row) {
+  // Only the latest reply carries the button, so drop any earlier one.
+  document
+    .querySelectorAll("#chatMessages .chat-regen")
+    .forEach((el) => el.remove());
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "chat-regen";
+  button.textContent = "↻ Regenerar con el modelo seleccionado";
+  button.addEventListener("click", regenerate);
+  row.appendChild(button);
+}
 
+async function generateAssistant() {
+  // The history already ends in a user turn; stream the assistant reply.
   chatState.streaming = true;
   const sendButton = byId("chatSend");
   sendButton.disabled = true;
   const { row, bubble } = appendChatMessage("assistant", "");
   bubble.classList.add("chat-typing");
   let assistantText = "";
-  let model = null;
   try {
     const response = await fetch("/admin/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: chatState.history }),
+      body: JSON.stringify({
+        messages: chatState.history,
+        model: byId("chatModel") ? byId("chatModel").value : "",
+      }),
     });
     if (!response.ok || !response.body) {
       throw new Error(`${response.status} ${response.statusText}`);
@@ -663,7 +670,7 @@ async function sendChat() {
           continue;
         }
         if (data.type === "message_start") {
-          model = ((data.message && data.message.model) || "").split("/").pop();
+          const model = ((data.message && data.message.model) || "").split("/").pop();
           if (model && !row.querySelector(".chat-model")) {
             const badge = document.createElement("div");
             badge.className = "chat-model";
@@ -687,14 +694,57 @@ async function sendChat() {
     bubble.classList.remove("chat-typing");
     if (!assistantText) bubble.textContent = "(sin respuesta)";
     chatState.history.push({ role: "assistant", content: assistantText });
+    addRegenerateButton(row);
   } catch (error) {
     bubble.classList.remove("chat-typing");
     bubble.textContent = `Error: ${error.message}`;
     bubble.classList.add("chat-error");
-    chatState.history.pop();
+    const history = chatState.history;
+    if (history.length && history[history.length - 1].role === "user") {
+      history.pop();
+    }
   } finally {
     chatState.streaming = false;
     sendButton.disabled = false;
+  }
+}
+
+async function sendChat() {
+  if (chatState.streaming) return;
+  const input = byId("chatInput");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  input.style.height = "auto";
+  chatState.history.push({ role: "user", content: text });
+  appendChatMessage("user", text);
+  await generateAssistant();
+}
+
+async function regenerate() {
+  if (chatState.streaming) return;
+  const history = chatState.history;
+  if (history.length && history[history.length - 1].role === "assistant") {
+    history.pop();
+  }
+  const replies = document.querySelectorAll("#chatMessages .chat-msg.assistant");
+  if (replies.length) replies[replies.length - 1].remove();
+  if (history.length) await generateAssistant();
+}
+
+async function populateChatModels() {
+  const select = byId("chatModel");
+  if (!select) return;
+  try {
+    const usage = await api("/admin/api/usage");
+    (usage.eligible || []).forEach((ref) => {
+      const option = document.createElement("option");
+      option.value = ref;
+      option.textContent = ref.split("/").slice(-1)[0];
+      select.appendChild(option);
+    });
+  } catch (error) {
+    // The selector is optional; leaving only "Automático" is fine.
   }
 }
 
@@ -716,6 +766,7 @@ function setupChat() {
     event.preventDefault();
     sendChat();
   });
+  populateChatModels();
 }
 
 byId("validateButton").addEventListener("click", () => validate(true));

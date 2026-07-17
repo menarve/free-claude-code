@@ -54,6 +54,9 @@ class ChatPayload(BaseModel):
 
     messages: list[ChatMessage] = Field(default_factory=list)
     max_tokens: int = 4096
+    # Empty -> derivation (auto). A concrete "provider/model" ref pins that
+    # model, so the user can pick a looser one when another refuses a prompt.
+    model: str = ""
 
 
 def _is_loopback_host(host: str | None) -> bool:
@@ -154,7 +157,7 @@ async def admin_chat(
     if not messages:
         raise HTTPException(status_code=400, detail="messages must not be empty")
     request_data = MessagesRequest(
-        model=DERIVATION_MODEL_REF,
+        model=payload.model.strip() or DERIVATION_MODEL_REF,
         messages=messages,
         max_tokens=payload.max_tokens,
         stream=True,

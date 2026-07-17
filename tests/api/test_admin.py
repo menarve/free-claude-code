@@ -941,3 +941,25 @@ def test_admin_chat_runs_a_derivation_request(monkeypatch, tmp_path):
     assert request_data.stream is True
     assert request_data.max_tokens == 128
     assert request_data.messages[0].content == "hola"
+
+
+def test_admin_chat_pins_an_explicit_model_when_given(monkeypatch, tmp_path):
+    from unittest.mock import AsyncMock
+
+    _set_home(monkeypatch, tmp_path)
+    app = create_test_app()
+    with patch(
+        "free_claude_code.api.admin_routes._create_messages_response",
+        new=AsyncMock(return_value={"ok": True}),
+    ) as mock_create:
+        response = _local_client(app).post(
+            "/admin/api/chat",
+            json={
+                "messages": [{"role": "user", "content": "hola"}],
+                "model": "nvidia_nim/z-ai/glm-5.2",
+            },
+        )
+    assert response.status_code == 200
+    # An explicit model pins it instead of running the derivation sentinel.
+    request_data = mock_create.await_args.args[1]
+    assert request_data.model == "nvidia_nim/z-ai/glm-5.2"

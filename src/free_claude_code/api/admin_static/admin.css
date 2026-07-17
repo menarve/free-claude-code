@@ -877,11 +877,64 @@ body.chat-active .app-shell {
 
 .chat-composer {
   display: flex;
-  align-items: flex-end;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
   padding: 16px;
   border-top: 1px solid var(--line);
   background: var(--panel);
+}
+
+.chat-model-select {
+  align-self: flex-start;
+  max-width: 340px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-full);
+  background-color: var(--panel-strong);
+  color: var(--accent-dark);
+  padding: 7px 34px 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%237c3aed' stroke-width='2.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 13px;
+}
+
+.chat-model-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+  outline: none;
+}
+
+.chat-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.chat-regen {
+  align-self: flex-start;
+  margin-top: 2px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--accent);
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.chat-regen:hover {
+  background: var(--accent-muted);
+  border-color: var(--accent);
 }
 
 .chat-input {
