@@ -129,6 +129,22 @@ _CASES = (
         model_fallback_eligible=True,
     ),
     _ClassificationCase(
+        "openai_bad_request_content_policy_switches_without_cooldown",
+        lambda: _openai_status_error(
+            openai.BadRequestError,
+            status_code=400,
+            message=(
+                "The response was filtered due to the prompt triggering the "
+                "content_filter policy. Please modify your prompt and retry."
+            ),
+        ),
+        FailureKind.INVALID_REQUEST,
+        400,
+        False,
+        # Derives to a looser model, but the model itself is fine -> no cooldown.
+        model_fallback_eligible=True,
+    ),
+    _ClassificationCase(
         "openai_bad_request_incompatible_model_is_model_fallback_eligible",
         lambda: _openai_status_error(
             openai.BadRequestError,

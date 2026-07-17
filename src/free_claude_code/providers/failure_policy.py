@@ -52,6 +52,28 @@ _INCOMPATIBLE_MODEL_MARKERS = frozenset(
         "only supports",
     }
 )
+# 400/403s where the provider refused the request on content-policy / safety
+# grounds (Azure/GitHub "content_filter"/"content management policy", Gemini
+# "safety"/"blocked"). Another model with looser policies may accept the same
+# prompt, so fall back to the next candidate - but do NOT park the model: it
+# works fine for other prompts, only this one was refused.
+_CONTENT_POLICY_MARKERS = frozenset(
+    {
+        "content_filter",
+        "content filter",
+        "content management policy",
+        "content_policy",
+        "content policy",
+        "responsible_ai",
+        "responsibleaipolicy",
+        "safety",
+        "prohibited_content",
+        "prohibited content",
+        "jailbreak",
+        "flagged",
+        "usage policies",
+    }
+)
 # 400s that mean the model is catalog-listed but not usable for this tier/key
 # (GitHub Models "unavailable model", Gemini "no longer available", Cerebras
 # "does not exist"). These are persistent, so the model is parked in cooldown
@@ -462,15 +484,17 @@ def _is_model_switchable_bad_request(exc: BaseException) -> bool:
 
     Covers prompts too large for this model's context window, models that
     simply can't serve chat completions (e.g. agent-only "Interactions API"
-    models), and models that are unavailable for this tier. A different
-    candidate can still succeed, so the derivation chain should move on rather
-    than fail the request.
+    models), models that are unavailable for this tier, and content-policy /
+    safety refusals (another model with looser policies may accept the same
+    prompt). A different candidate can still succeed, so the derivation chain
+    should move on rather than fail the request.
     """
     text = transient_error_text(exc)
     return (
         _has_marker(text, _CONTEXT_LENGTH_MARKERS)
         or _has_marker(text, _INCOMPATIBLE_MODEL_MARKERS)
         or _has_marker(text, _MODEL_UNAVAILABLE_MARKERS)
+        or _has_marker(text, _CONTENT_POLICY_MARKERS)
     )
 
 
