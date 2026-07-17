@@ -3,7 +3,7 @@ const state = {
   fields: new Map(),
   localStatus: new Map(),
   modelOptions: [],
-  activeView: "providers",
+  activeView: "chat",
   usageSort: "list",
 };
 
@@ -13,6 +13,13 @@ const MASKED_SECRET = "********";
 const DERIVATION_MODEL_REF = "menarve/derivation";
 const DERIVATION_DISPLAY_NAME = "Derivación Menarve";
 const VIEW_GROUPS = [
+  {
+    id: "chat",
+    label: "Chat",
+    title: "Chat",
+    sections: [],
+    containerId: "chatSections",
+  },
   {
     id: "providers",
     label: "Providers",
@@ -40,13 +47,6 @@ const VIEW_GROUPS = [
     title: "Usage",
     sections: [],
     containerId: "usageSections",
-  },
-  {
-    id: "chat",
-    label: "Chat",
-    title: "Chat",
-    sections: [],
-    containerId: "chatSections",
   },
 ];
 
