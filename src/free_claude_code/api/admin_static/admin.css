@@ -743,10 +743,18 @@ textarea:focus-visible,
 }
 
 /* Web Chat */
+/* The config action bar and its reserved space don't belong on the chat view. */
+body.chat-active .action-bar {
+  display: none;
+}
+body.chat-active .app-shell {
+  padding-bottom: 0;
+}
+
 .chat-panel {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 250px);
+  height: calc(100vh - 190px);
   min-height: 440px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);

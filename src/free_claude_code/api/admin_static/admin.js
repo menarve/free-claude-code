@@ -137,6 +137,9 @@ function setActiveView(viewId, { scroll = false } = {}) {
   state.activeView = activeView.id;
   byId("pageTitle").textContent = activeView.title;
 
+  // The config action bar (Validate/Apply) is irrelevant while chatting.
+  document.body.classList.toggle("chat-active", activeView.id === "chat");
+
   document.querySelectorAll(".nav-link").forEach((link) => {
     const selected = link.dataset.view === activeView.id;
     link.classList.toggle("active", selected);
