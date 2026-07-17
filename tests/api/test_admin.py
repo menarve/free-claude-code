@@ -902,3 +902,42 @@ def test_admin_usage_eligible_lists_derivation_models_and_excludes_paid(
     assert "open_router/openai/gpt-oss-20b:free" in eligible
     # Paid OpenRouter model is never offered for automatic derivation.
     assert "open_router/anthropic/claude-opus-4.8" not in eligible
+
+
+def test_admin_chat_is_loopback_only(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    app = create_test_app()
+    remote_client = TestClient(app, client=("203.0.113.10", 50000))
+    response = remote_client.post(
+        "/admin/api/chat", json={"messages": [{"role": "user", "content": "hi"}]}
+    )
+    assert response.status_code == 403
+
+
+def test_admin_chat_rejects_empty_messages(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    app = create_test_app()
+    response = _local_client(app).post("/admin/api/chat", json={"messages": []})
+    assert response.status_code == 400
+
+
+def test_admin_chat_runs_a_derivation_request(monkeypatch, tmp_path):
+    from unittest.mock import AsyncMock
+
+    _set_home(monkeypatch, tmp_path)
+    app = create_test_app()
+    with patch(
+        "free_claude_code.api.admin_routes._create_messages_response",
+        new=AsyncMock(return_value={"ok": True}),
+    ) as mock_create:
+        response = _local_client(app).post(
+            "/admin/api/chat",
+            json={"messages": [{"role": "user", "content": "hola"}], "max_tokens": 128},
+        )
+    assert response.status_code == 200
+    # The web chat routes through the same derivation chain as fcc-claude.
+    request_data = mock_create.await_args.args[1]
+    assert request_data.model == "menarve/derivation"
+    assert request_data.stream is True
+    assert request_data.max_tokens == 128
+    assert request_data.messages[0].content == "hola"

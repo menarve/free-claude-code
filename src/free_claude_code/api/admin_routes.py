@@ -2,7 +2,7 @@
 
 import ipaddress
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import httpx
@@ -14,10 +14,17 @@ from free_claude_code.application.model_fallback import eligible_candidate_refs
 from free_claude_code.config.admin.manifest import FIELD_BY_KEY
 from free_claude_code.config.admin.persistence import validate_updates
 from free_claude_code.config.admin.values import load_config_response
-from free_claude_code.config.model_refs import configured_chat_model_refs
+from free_claude_code.config.model_refs import (
+    DERIVATION_MODEL_REF,
+    configured_chat_model_refs,
+)
+from free_claude_code.core.anthropic import MessagesRequest
+from free_claude_code.core.anthropic.models import Message
 
 from .dependencies import get_services
 from .ports import ApiServices
+from .request_ids import get_request_id
+from .routes import _create_messages_response
 
 router = APIRouter()
 
@@ -33,6 +40,20 @@ class AdminConfigPayload(BaseModel):
     """Partial config update submitted by the admin UI."""
 
     values: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatMessage(BaseModel):
+    """One turn of the admin web-chat conversation."""
+
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ChatPayload(BaseModel):
+    """A web-chat request from the admin UI, run through the derivation chain."""
+
+    messages: list[ChatMessage] = Field(default_factory=list)
+    max_tokens: int = 4096
 
 
 def _is_loopback_host(host: str | None) -> bool:
@@ -112,6 +133,35 @@ async def apply_admin_config(
     if isinstance(restart, dict) and restart.get("automatic"):
         background_tasks.add_task(services.admin.request_restart)
     return result
+
+
+@router.post("/admin/api/chat")
+async def admin_chat(
+    payload: ChatPayload,
+    request: Request,
+    services: ApiServices = Depends(get_services),
+):
+    """Run a web-chat turn through the same derivation chain as fcc-claude.
+
+    Local-only (loopback). Returns the raw Anthropic SSE stream so the panel can
+    render the assistant text incrementally; the derivation picks the best free
+    model exactly as the terminal client does.
+    """
+    require_loopback_admin(request)
+    messages = [
+        Message(role=m.role, content=m.content) for m in payload.messages if m.content
+    ]
+    if not messages:
+        raise HTTPException(status_code=400, detail="messages must not be empty")
+    request_data = MessagesRequest(
+        model=DERIVATION_MODEL_REF,
+        messages=messages,
+        max_tokens=payload.max_tokens,
+        stream=True,
+    )
+    return await _create_messages_response(
+        services, request_data, request_id=get_request_id(request)
+    )
 
 
 @router.get("/admin/api/status")

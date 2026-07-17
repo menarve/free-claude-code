@@ -41,6 +41,13 @@ const VIEW_GROUPS = [
     sections: [],
     containerId: "usageSections",
   },
+  {
+    id: "chat",
+    label: "Chat",
+    title: "Chat",
+    sections: [],
+    containerId: "chatSections",
+  },
 ];
 
 const byId = (id) => document.getElementById(id);
@@ -199,7 +206,8 @@ function updateProviderCard(providerId, status, label, metaText) {
 
 function renderSections(sections, fields) {
   VIEW_GROUPS.forEach((view) => {
-    byId(view.containerId).innerHTML = "";
+    const container = byId(view.containerId);
+    if (container) container.innerHTML = "";
   });
 
   const sectionById = new Map(sections.map((section) => [section.id, section]));
@@ -590,8 +598,126 @@ function showMessage(message, kind = "") {
   area.className = `message-area ${kind}`.trim();
 }
 
+const chatState = { history: [], streaming: false };
+
+function appendChatMessage(role, text) {
+  const container = byId("chatMessages");
+  const empty = container.querySelector(".chat-empty");
+  if (empty) empty.remove();
+  const row = document.createElement("div");
+  row.className = `chat-msg ${role}`;
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble";
+  bubble.textContent = text;
+  row.appendChild(bubble);
+  container.appendChild(row);
+  container.scrollTop = container.scrollHeight;
+  return { row, bubble };
+}
+
+async function sendChat() {
+  if (chatState.streaming) return;
+  const input = byId("chatInput");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  input.style.height = "auto";
+  chatState.history.push({ role: "user", content: text });
+  appendChatMessage("user", text);
+
+  chatState.streaming = true;
+  const sendButton = byId("chatSend");
+  sendButton.disabled = true;
+  const { row, bubble } = appendChatMessage("assistant", "");
+  bubble.classList.add("chat-typing");
+  let assistantText = "";
+  let model = null;
+  try {
+    const response = await fetch("/admin/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: chatState.history }),
+    });
+    if (!response.ok || !response.body) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop();
+      for (const part of parts) {
+        const dataLine = part.split("\n").find((line) => line.startsWith("data:"));
+        if (!dataLine) continue;
+        let data;
+        try {
+          data = JSON.parse(dataLine.slice(5).trim());
+        } catch (error) {
+          continue;
+        }
+        if (data.type === "message_start") {
+          model = ((data.message && data.message.model) || "").split("/").pop();
+        } else if (
+          data.type === "content_block_delta" &&
+          data.delta &&
+          data.delta.type === "text_delta"
+        ) {
+          assistantText += data.delta.text;
+          bubble.classList.remove("chat-typing");
+          bubble.textContent = assistantText;
+          byId("chatMessages").scrollTop = byId("chatMessages").scrollHeight;
+        } else if (data.type === "error") {
+          throw new Error((data.error && data.error.message) || "stream error");
+        }
+      }
+    }
+    bubble.classList.remove("chat-typing");
+    if (!assistantText) bubble.textContent = "(sin respuesta)";
+    if (model) {
+      const badge = document.createElement("div");
+      badge.className = "chat-model";
+      badge.textContent = `⚡ ${model}`;
+      row.appendChild(badge);
+    }
+    chatState.history.push({ role: "assistant", content: assistantText });
+  } catch (error) {
+    bubble.classList.remove("chat-typing");
+    bubble.textContent = `Error: ${error.message}`;
+    bubble.classList.add("chat-error");
+    chatState.history.pop();
+  } finally {
+    chatState.streaming = false;
+    sendButton.disabled = false;
+  }
+}
+
+function setupChat() {
+  const form = byId("chatForm");
+  const input = byId("chatInput");
+  if (!form || !input) return;
+  input.addEventListener("input", () => {
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, 200)}px`;
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  });
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    sendChat();
+  });
+}
+
 byId("validateButton").addEventListener("click", () => validate(true));
 byId("applyButton").addEventListener("click", apply);
+setupChat();
 
 load().catch((error) => {
   showMessage(error.message, "error");

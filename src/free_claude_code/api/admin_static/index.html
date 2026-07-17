@@ -91,6 +91,48 @@
               aria-label="Model usage statistics"
             ></div>
           </section>
+
+          <section id="view-chat" class="admin-view" data-view="chat" hidden>
+            <div class="chat-panel">
+              <div id="chatMessages" class="chat-messages" aria-live="polite">
+                <div class="chat-empty">
+                  <div class="chat-empty-mark" aria-hidden="true">
+                    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <defs>
+                        <linearGradient id="chatCap" x1="0" y1="0" x2="1" y2="1">
+                          <stop offset="0" stop-color="#EDE9FE" />
+                          <stop offset="1" stop-color="#C4B5FD" />
+                        </linearGradient>
+                        <linearGradient id="chatLeft" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0" stop-color="#A78BFA" />
+                          <stop offset="1" stop-color="#7C3AED" />
+                        </linearGradient>
+                        <linearGradient id="chatRight" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0" stop-color="#7C3AED" />
+                          <stop offset="1" stop-color="#5B21B6" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M16 3 29 9 16 14 3 9Z" fill="url(#chatCap)" />
+                      <path d="M3 9 16 14 16 29Z" fill="url(#chatLeft)" />
+                      <path d="M29 9 16 14 16 29Z" fill="url(#chatRight)" />
+                    </svg>
+                  </div>
+                  <h3>Chatea con la derivación</h3>
+                  <p>Usa los mismos modelos gratuitos que fcc-claude, sin la terminal.</p>
+                </div>
+              </div>
+              <form id="chatForm" class="chat-composer">
+                <textarea
+                  id="chatInput"
+                  class="chat-input"
+                  rows="1"
+                  placeholder="Escribe un mensaje…"
+                  aria-label="Mensaje"
+                ></textarea>
+                <button id="chatSend" class="primary-button" type="submit">Enviar</button>
+              </form>
+            </div>
+          </section>
         </div>
       </main>
 
