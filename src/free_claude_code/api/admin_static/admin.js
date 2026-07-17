@@ -664,6 +664,12 @@ async function sendChat() {
         }
         if (data.type === "message_start") {
           model = ((data.message && data.message.model) || "").split("/").pop();
+          if (model && !row.querySelector(".chat-model")) {
+            const badge = document.createElement("div");
+            badge.className = "chat-model";
+            badge.textContent = `⚡ ${model}`;
+            row.insertBefore(badge, bubble);
+          }
         } else if (
           data.type === "content_block_delta" &&
           data.delta &&
@@ -680,12 +686,6 @@ async function sendChat() {
     }
     bubble.classList.remove("chat-typing");
     if (!assistantText) bubble.textContent = "(sin respuesta)";
-    if (model) {
-      const badge = document.createElement("div");
-      badge.className = "chat-model";
-      badge.textContent = `⚡ ${model}`;
-      row.appendChild(badge);
-    }
     chatState.history.push({ role: "assistant", content: assistantText });
   } catch (error) {
     bubble.classList.remove("chat-typing");
