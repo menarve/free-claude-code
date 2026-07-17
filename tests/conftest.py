@@ -29,6 +29,22 @@ def _isolate_from_dotenv(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_active_model_file(monkeypatch, tmp_path):
+    """Keep streaming tests from clobbering the real ~/.fcc/active_model.
+
+    ``write_active_model`` runs on the first streamed chunk, so any test that
+    exercises the executor would otherwise overwrite the user's live
+    ~/.fcc/active_model with a mock model (e.g. "test-model") and corrupt their
+    status line. Redirect just that file to a per-test tmp.
+    """
+    from free_claude_code.application import active_model
+
+    monkeypatch.setattr(
+        active_model, "active_model_path", lambda: tmp_path / "active_model"
+    )
+
+
 @pytest.fixture
 def provider_config():
     from free_claude_code.providers.base import ProviderConfig
